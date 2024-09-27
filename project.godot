@@ -11,9 +11,15 @@ config_version=5
 [application]
 
 config/name="Particle_System"
+run/main_scene="res://particle_system.tscn"
 config/features=PackedStringArray("4.3", "Mobile")
+run/max_fps=100
 config/icon="res://icon.svg"
 
-[rendering]
+[debug]
 
-renderer/rendering_method="mobile"
+settings/stdout/print_fps=true
+
+[display]
+
+window/vsync/vsync_mode=0

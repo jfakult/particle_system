@@ -1,0 +1,27 @@
+[gd_scene load_steps=5 format=3 uid="uid://bpqk2gom5ybs4"]
+
+[ext_resource type="Shader" path="res://slime.gdshader" id="1_kcq2c"]
+[ext_resource type="Script" path="res://slime_mold.gd" id="2_66wie"]
+[ext_resource type="Script" path="res://fps_label.gd" id="3_i23t8"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_638ch"]
+shader = ExtResource("1_kcq2c")
+
+[node name="ParticleSystem" type="Node2D"]
+
+[node name="FPS_Label" type="Label" parent="."]
+z_index = 1
+offset_left = 5.0
+offset_top = 7.0
+offset_right = 45.0
+offset_bottom = 30.0
+theme_override_colors/font_color = Color(0.475537, 0.475537, 0.475537, 1)
+text = "test"
+script = ExtResource("3_i23t8")
+
+[node name="SlimeMold" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_638ch")
+offset_right = 1152.0
+offset_bottom = 648.0
+color = Color(0.560901, 0.309025, 0.387433, 1)
+script = ExtResource("2_66wie")
