@@ -1,5 +1,5 @@
 # SlimeSettings.gd
-class_name SlimeSettings extends Node2D
+class_name SlimeSettings extends Resource
 
 # Simulation Settings
 var steps_per_frame: int
@@ -20,8 +20,8 @@ var diffuse_rate: float
 var species_settings: Array[SpeciesSettings]
 
 func _init(_steps_per_frame: int = 1, _width: int = 1280, _height: int = 720, _num_agents: int = 100000,
-           _spawn_mode: int = SpawnMode.INWARD_CIRCLE, _trail_weight: float = 1.0, _decay_rate: float = 0.995,
-           _diffuse_rate: float = 10.0, _species_settings: Array[SpeciesSettings] = [SpeciesSettings.new()]):
+           _spawn_mode: int = SpawnMode.RANDOM, _trail_weight: float = 0.6, _decay_rate: float = 0.94,
+           _diffuse_rate: float = 20.0, _species_settings: Array[SpeciesSettings] = [SpeciesSettings.new()]):
     steps_per_frame = _steps_per_frame
     width = _width
     height = _height

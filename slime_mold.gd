@@ -1,8 +1,7 @@
 extends ColorRect
 
 var show_agents_only = false
-
-@export var slime_settings: SlimeSettings = SlimeSettings.new()
+#var GameSettings = preload("res://path_to_your_GameSettings.gd").new()
 
 var trail_map: ImageTexture
 var diffused_trail_map: ImageTexture
@@ -59,36 +58,36 @@ func pack_array_data(data):
 func init_agents():
 	var agents = []
 	# Initialize agents
-	var center = Vector2(slime_settings.width / 2.0, slime_settings.height / 2.0)
-	for i in range(slime_settings.num_agents):
+	var center = Vector2(GameSettings.slime_settings.width / 2.0, GameSettings.slime_settings.height / 2.0)
+	for i in range(GameSettings.slime_settings.num_agents):
 		var start_pos = Vector2()
 		var random_angle : float = randf() * PI * 2
 		var angle : float = 0.0
 
-		match slime_settings.spawn_mode:
-			slime_settings.SpawnMode.POINT:
+		match GameSettings.slime_settings.spawn_mode:
+			GameSettings.slime_settings.SpawnMode.POINT:
 				start_pos = center
 				angle = random_angle
-			slime_settings.SpawnMode.RANDOM:
-				start_pos = Vector2(randi() % slime_settings.width, randi() % slime_settings.height)
+			GameSettings.slime_settings.SpawnMode.RANDOM:
+				start_pos = Vector2(randi() % GameSettings.slime_settings.width, randi() % GameSettings.slime_settings.height)
 				angle = random_angle
-			slime_settings.SpawnMode.INWARD_CIRCLE:
-				start_pos = center + (Vector2(randf() - 0.5, randf() - 0.5)) * Vector2(randf(), randf()).normalized() * (slime_settings.height / 2.0) 
+			GameSettings.slime_settings.SpawnMode.INWARD_CIRCLE:
+				start_pos = center + (Vector2(randf() - 0.5, randf() - 0.5)) * Vector2(randf(), randf()).normalized() * (GameSettings.slime_settings.height / 2.0) 
 				angle = (center - start_pos).angle()
-			slime_settings.SpawnMode.INWARD_SQUARE:
-				start_pos = center + (Vector2(randf() - 0.5, randf() - 0.5)) * (slime_settings.height / 2.0) 
+			GameSettings.slime_settings.SpawnMode.INWARD_SQUARE:
+				start_pos = center + (Vector2(randf() - 0.5, randf() - 0.5)) * (GameSettings.slime_settings.height / 2.0) 
 				angle = (center - start_pos).angle()
-			slime_settings.SpawnMode.RANDOM_CIRCLE:
-				start_pos = center + Vector2(randf(), randf()).normalized() * slime_settings.height * 0.15
+			GameSettings.slime_settings.SpawnMode.RANDOM_CIRCLE:
+				start_pos = center + Vector2(randf(), randf()).normalized() * GameSettings.slime_settings.height * 0.15
 				angle = random_angle
 
 		# Randomly assign species
-		var num_species = slime_settings.species_settings.size()
+		var num_species = GameSettings.slime_settings.species_settings.size()
 		var species_index : int = 0
 		var species_mask : Vector4 = Vector4.ONE
 
 		if num_species == 1:
-			species_mask = slime_settings.species_settings[0].colour
+			species_mask = GameSettings.slime_settings.species_settings[0].colour
 		elif num_species > 1:
 			species_index = randi() % num_species
 			if species_index == 0:
@@ -120,19 +119,19 @@ func _ready():
 	# Create render textures
 	# https://github.com/godotengine/godot-docs/issues/4834
 	var fmt = RDTextureFormat.new()
-	fmt.width = slime_settings.width
-	fmt.height = slime_settings.height
+	fmt.width = GameSettings.slime_settings.width
+	fmt.height = GameSettings.slime_settings.height
 	fmt.format = RenderingDevice.DATA_FORMAT_R32G32B32A32_SFLOAT
 	fmt.usage_bits = RenderingDevice.TEXTURE_USAGE_STORAGE_BIT + RenderingDevice.TEXTURE_USAGE_CAN_UPDATE_BIT + RenderingDevice.TEXTURE_USAGE_CAN_COPY_FROM_BIT
 
-	trail_map_image = Image.create(slime_settings.width, slime_settings.height, false, Image.FORMAT_RGBAF)
+	trail_map_image = Image.create(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, Image.FORMAT_RGBAF)
 	trail_map_image.fill(Color(0.0, 0.0, 0.0, 1))
 	trail_map_texture = rd.texture_create(fmt, RDTextureView.new(), [trail_map_image.get_data()])
 
-	var diffused_trail_image : Image = Image.create(slime_settings.width, slime_settings.height, false, Image.FORMAT_RGBAF)
+	var diffused_trail_image : Image = Image.create(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, Image.FORMAT_RGBAF)
 	diffused_trail_map = ImageTexture.create_from_image(diffused_trail_image)
 
-	var display_image : Image = Image.create(slime_settings.width, slime_settings.height, false, Image.FORMAT_RGBAF)
+	var display_image : Image = Image.create(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, Image.FORMAT_RGBAF)
 	display_texture = ImageTexture.create_from_image(display_image)
 
 	var shader_file = load("res://slime.glsl")
@@ -161,30 +160,18 @@ func _ready():
 	#print(first_agent_pos, second_agent_pos)
 
 
-	var species_settings_list = []
-	for species in slime_settings.species_settings:
-		species_settings_list.append(species.move_speed)
-		species_settings_list.append(species.turn_speed)
-		species_settings_list.append(species.sensor_angle_spacing)
-		species_settings_list.append(species.sensor_offset_dst)
-		species_settings_list.append(species.sensor_size)
-		species_settings_list.append(species.colour)
-
-	var species_buffer = pack_array(species_settings_list)
-	species_uniform = build_shader_buffer(species_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 1)
-
 	# Trail map
 	trail_map_uniform = build_shader_buffer(trail_map_texture, RenderingDevice.UNIFORM_TYPE_IMAGE, 2)
 	# update into the shader
 	rd.texture_update(trail_map_texture, 0, trail_map_image.get_data())
 
 	# Screen size
-	var screen_size_data = [slime_settings.width, slime_settings.height]
+	var screen_size_data = [GameSettings.slime_settings.width, GameSettings.slime_settings.height]
 	var screen_size_buffer = pack_array(screen_size_data)
 	screen_size_uniform = build_shader_buffer(screen_size_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 3)
 
 	# Create a buffer for all float values
-	var float_data = [slime_settings.trail_weight, 0.0, slime_settings.num_agents]
+	var float_data = [GameSettings.slime_settings.trail_weight, 0.0, GameSettings.slime_settings.num_agents]
 	var float_buffer = pack_array(float_data)
 	floats_uniform = build_shader_buffer(float_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 4)
 
@@ -196,10 +183,10 @@ func _ready():
 	#rd.compute_list_bind_compute_pipeline(compute_list, agents_pipeline)
 	#rd.compute_list_bind_compute_pipeline(compute_list, diffuse_pipeline)
 
-	var old_trail_weight = slime_settings.trail_weight
-	slime_settings.trail_weight = 255.0
+	var old_trail_weight = GameSettings.slime_settings.trail_weight
+	GameSettings.slime_settings.trail_weight = 255.0
 	run_simulation(1 / 60.0)
-	slime_settings.trail_weight = old_trail_weight
+	GameSettings.slime_settings.trail_weight = old_trail_weight
 
 # Main simulation loop
 func _process(delta: float):
@@ -207,16 +194,28 @@ func _process(delta: float):
 	if Time.get_ticks_msec() < 3000:
 		return
 
-	for i in range(slime_settings.steps_per_frame):
+	GameSettings.update_settings()
+	
+	for i in range(GameSettings.slime_settings.steps_per_frame):
 		run_simulation(delta)
-
-	# Update the display texture
-
 
 # Run a single step of the simulation
 func run_simulation(delta: float):
+	var species_settings_list = []
+	for species in GameSettings.slime_settings.species_settings:
+		species_settings_list.append(species.move_speed)
+		species_settings_list.append(species.turn_speed)
+		species_settings_list.append(species.random_steer_strength)
+		species_settings_list.append(species.sensor_angle_spacing)
+		species_settings_list.append(species.sensor_offset_dst)
+		species_settings_list.append(species.sensor_size)
+		species_settings_list.append(species.colour)
+
+	var species_buffer = pack_array(species_settings_list)
+	species_uniform = build_shader_buffer(species_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 1)
+
 	# Update delta time uniform
-	var float_data = [slime_settings.trail_weight, delta, slime_settings.diffuse_rate, slime_settings.decay_rate, slime_settings.num_agents]
+	var float_data = [GameSettings.slime_settings.trail_weight, delta, GameSettings.slime_settings.diffuse_rate, GameSettings.slime_settings.decay_rate, GameSettings.slime_settings.num_agents]
 	var float_buffer = pack_array(float_data)
 	floats_uniform = build_shader_buffer(float_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 4)
 
@@ -246,7 +245,7 @@ func run_simulation(delta: float):
 
 	rd.compute_list_bind_uniform_set(compute_list, uniform_set, 0)
 	rd.compute_list_bind_compute_pipeline(compute_list, agents_pipeline)
-	rd.compute_list_dispatch(compute_list, ceil(slime_settings.num_agents / 128.0), 1, 1)
+	rd.compute_list_dispatch(compute_list, ceil(GameSettings.slime_settings.num_agents / 128.0), 1, 1)
 
 	rd.compute_list_end()
 
@@ -258,7 +257,7 @@ func run_simulation(delta: float):
 
 	rd.compute_list_bind_uniform_set(compute_list, uniform_set2, 0)
 	rd.compute_list_bind_compute_pipeline(compute_list, diffuse_pipeline)
-	rd.compute_list_dispatch(compute_list, ceil(slime_settings.width / 16.0), ceil(slime_settings.height / 16.0), 1)
+	rd.compute_list_dispatch(compute_list, ceil(GameSettings.slime_settings.width / 16.0), ceil(GameSettings.slime_settings.height / 16.0), 1)
 
 	rd.compute_list_end()
 
@@ -266,14 +265,15 @@ func run_simulation(delta: float):
 	rd.submit()
 	rd.sync()
 
-	# Read the texture and send it to the colorRect's shader for display
-	var byte_data = rd.texture_get_data(trail_map_texture, 0)
-	var image = Image.create_from_data(slime_settings.width, slime_settings.height, false, Image.FORMAT_RGBAF, byte_data)
-	var image_texture = ImageTexture.create_from_image(image)
-	material.set_shader_parameter("trail_map", image_texture)
-
 
 	#var agent_byte_data = rd.buffer_get_data(shader_agents_buffer)
 	#var first_agent_pos : Vector2 = Vector2(agent_byte_data.decode_float(0), agent_byte_data.decode_float(4))
 	#var second_agent_pos : Vector2 = Vector2(agent_byte_data.decode_float(32), agent_byte_data.decode_float(36))
 	#print(first_agent_pos, second_agent_pos)
+
+
+	# Read the texture and send it to the colorRect's shader for display
+	var byte_data = rd.texture_get_data(trail_map_texture, 0)
+	var image = Image.create_from_data(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, Image.FORMAT_RGBAF, byte_data)
+	var image_texture = ImageTexture.create_from_image(image)
+	material.set_shader_parameter("trail_map", image_texture)

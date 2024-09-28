@@ -1,9 +1,12 @@
 # SpeciesSettings.gd
 class_name SpeciesSettings extends Resource 
 
+@export
+
 # Movement Settings
 var move_speed: float
 var turn_speed: float
+var random_steer_strength: float
 
 # Sensor Settings
 var sensor_angle_spacing: float
@@ -17,10 +20,11 @@ var colour: Vector4
 '''
 move_speed : turn_speed ~= 100 : 1.5
 '''
-func _init(_move_speed: float = 100.0, _turn_speed: float = 1.2, _sensor_angle_spacing: float = PI / 6,
+func _init(_move_speed: float = 100.0, _turn_speed: float = 3.6, _random_steer_strength: float = 3.0, _sensor_angle_spacing: float = PI / 6,
            _sensor_offset_dst: float = 3.0, _sensor_size: int = 2, _colour: Vector4 = Vector4(0.6, 0.5, 1, 1)):
     move_speed = _move_speed
     turn_speed = _turn_speed
+    random_steer_strength = _random_steer_strength
     sensor_angle_spacing = _sensor_angle_spacing
     sensor_offset_dst = _sensor_offset_dst
     sensor_size = _sensor_size

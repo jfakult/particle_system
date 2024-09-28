@@ -18,6 +18,7 @@ layout(set = 0, binding = 0, std430) restrict buffer AgentsBuffer {
 struct SpeciesData {
     float move_speed;
     float turn_speed;
+    float random_steer_strength;
     float sensor_angle;
     float sensor_offset;
     int sensor_size;
@@ -126,7 +127,7 @@ void main() {
     float left_weight = sense(agent, species, sensor_angle);
     float right_weight = sense(agent, species, -sensor_angle);
 
-    float random_steer_strength = scale_to_range_01(random);
+    float random_steer_strength = scale_to_range_01(random) * species.random_steer_strength;
     float turn_speed = species.turn_speed * 2.0 * 3.1415;
 
     if (forward_weight > left_weight && forward_weight > right_weight) {
