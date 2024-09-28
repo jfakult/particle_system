@@ -37,6 +37,8 @@ layout(set=0, binding=3) restrict buffer ScreenSizeBuffer {
 layout(set=0, binding=4) restrict buffer FloatDataBuffer {
     float trail_weight;
     float delta_time;
+    float diffuse_rate;
+    float decay_rate;
     int num_agents;
 } float_data;
 
@@ -111,7 +113,7 @@ void main() {
 
     AgentData agent = agents_buffer.agents[id];
 
-    // dot(agent.position.x, agent.position.y, vec4(0,1,0,1), 1);
+    //dot(agent.position.x, agent.position.y, vec4(0,1,0,1), 2);
 
     int species_index = agent.species_index;
     vec4 species_mask = agent.species_mask;

@@ -9,10 +9,13 @@ var diffused_trail_map: ImageTexture
 var display_texture: ImageTexture
 
 var rd = RenderingServer.create_local_rendering_device()
-var shader
 var compute_list
-var pipeline #: RDComputePipeline
-var uniform_set
+
+var agents_shader
+var diffuse_shader
+var agents_pipeline
+var diffuse_pipeline
+
 var shader_agents_buffer
 var agents_uniform: RDUniform
 var species_uniform: RDUniform
@@ -70,7 +73,10 @@ func init_agents():
 				start_pos = Vector2(randi() % slime_settings.width, randi() % slime_settings.height)
 				angle = random_angle
 			slime_settings.SpawnMode.INWARD_CIRCLE:
-				start_pos = center + Vector2(randf(), randf()).normalized() * slime_settings.height * 0.5
+				start_pos = center + (Vector2(randf() - 0.5, randf() - 0.5)) * Vector2(randf(), randf()).normalized() * (slime_settings.height / 2.0) 
+				angle = (center - start_pos).angle()
+			slime_settings.SpawnMode.INWARD_SQUARE:
+				start_pos = center + (Vector2(randf() - 0.5, randf() - 0.5)) * (slime_settings.height / 2.0) 
 				angle = (center - start_pos).angle()
 			slime_settings.SpawnMode.RANDOM_CIRCLE:
 				start_pos = center + Vector2(randf(), randf()).normalized() * slime_settings.height * 0.15
@@ -120,7 +126,7 @@ func _ready():
 	fmt.usage_bits = RenderingDevice.TEXTURE_USAGE_STORAGE_BIT + RenderingDevice.TEXTURE_USAGE_CAN_UPDATE_BIT + RenderingDevice.TEXTURE_USAGE_CAN_COPY_FROM_BIT
 
 	trail_map_image = Image.create(slime_settings.width, slime_settings.height, false, Image.FORMAT_RGBAF)
-	trail_map_image.fill(Color(0.2, 0.2, 0.2, 1))
+	trail_map_image.fill(Color(0.0, 0.0, 0.0, 1))
 	trail_map_texture = rd.texture_create(fmt, RDTextureView.new(), [trail_map_image.get_data()])
 
 	var diffused_trail_image : Image = Image.create(slime_settings.width, slime_settings.height, false, Image.FORMAT_RGBAF)
@@ -131,7 +137,11 @@ func _ready():
 
 	var shader_file = load("res://slime.glsl")
 	var shader_spirv: RDShaderSPIRV = shader_file.get_spirv()
-	shader = rd.shader_create_from_spirv(shader_spirv)
+	agents_shader = rd.shader_create_from_spirv(shader_spirv)
+	var shader_file2 = load("res://diffuse_map.glsl")
+	var shader_spirv2: RDShaderSPIRV = shader_file2.get_spirv()
+	diffuse_shader = rd.shader_create_from_spirv(shader_spirv2)
+	
 
 	var agents = init_agents()
 	var agents_list = []
@@ -179,16 +189,24 @@ func _ready():
 	floats_uniform = build_shader_buffer(float_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 4)
 
 	# Create a compute pipeline
-	#pipeline = rd.compute_pipeline_create(shader)
+	agents_pipeline = rd.compute_pipeline_create(agents_shader)
+	diffuse_pipeline = rd.compute_pipeline_create(diffuse_shader)
+
 	#compute_list = rd.compute_list_begin()
-	#rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
-	#rd.compute_list_end()
+	#rd.compute_list_bind_compute_pipeline(compute_list, agents_pipeline)
+	#rd.compute_list_bind_compute_pipeline(compute_list, diffuse_pipeline)
 
-	#run_simulation(0.0)
-
+	var old_trail_weight = slime_settings.trail_weight
+	slime_settings.trail_weight = 255.0
+	run_simulation(1 / 60.0)
+	slime_settings.trail_weight = old_trail_weight
 
 # Main simulation loop
 func _process(delta: float):
+	# if less than 1 second, wait
+	if Time.get_ticks_msec() < 3000:
+		return
+
 	for i in range(slime_settings.steps_per_frame):
 		run_simulation(delta)
 
@@ -198,7 +216,7 @@ func _process(delta: float):
 # Run a single step of the simulation
 func run_simulation(delta: float):
 	# Update delta time uniform
-	var float_data = [slime_settings.trail_weight, delta, slime_settings.num_agents]
+	var float_data = [slime_settings.trail_weight, delta, slime_settings.diffuse_rate, slime_settings.decay_rate, slime_settings.num_agents]
 	var float_buffer = pack_array(float_data)
 	floats_uniform = build_shader_buffer(float_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 4)
 
@@ -207,22 +225,41 @@ func run_simulation(delta: float):
 	#rd.texture_update(trail_map_texture, 0, trail_map_image.get_data())
 
 	# Create the uniform set
-	uniform_set = rd.uniform_set_create([
+	var uniform_set = rd.uniform_set_create([
 		agents_uniform,
 		species_uniform,
 		trail_map_uniform,
 		screen_size_uniform,
 		floats_uniform
-	], shader, 0)
+	], agents_shader, 0)
 
-	pipeline = rd.compute_pipeline_create(shader)
-	compute_list = rd.compute_list_begin()
-	rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
-	rd.compute_list_bind_uniform_set(compute_list, uniform_set, 0)
+
+	var uniform_set2 = rd.uniform_set_create([
+		trail_map_uniform,
+		screen_size_uniform,
+		floats_uniform
+	], diffuse_shader, 0)
 
 	# Dispatch compute shader, device limit is 65535
-	@warning_ignore("integer_division")
-	rd.compute_list_dispatch(compute_list, ceil(slime_settings.num_agents / 128.0) + 1, 1, 1)
+
+	compute_list = rd.compute_list_begin()
+
+	rd.compute_list_bind_uniform_set(compute_list, uniform_set, 0)
+	rd.compute_list_bind_compute_pipeline(compute_list, agents_pipeline)
+	rd.compute_list_dispatch(compute_list, ceil(slime_settings.num_agents / 128.0), 1, 1)
+
+	rd.compute_list_end()
+
+	# Submit to GPU and wait for sync
+	rd.submit()
+	rd.sync()
+
+	compute_list = rd.compute_list_begin()
+
+	rd.compute_list_bind_uniform_set(compute_list, uniform_set2, 0)
+	rd.compute_list_bind_compute_pipeline(compute_list, diffuse_pipeline)
+	rd.compute_list_dispatch(compute_list, ceil(slime_settings.width / 16.0), ceil(slime_settings.height / 16.0), 1)
+
 	rd.compute_list_end()
 
 	# Submit to GPU and wait for sync

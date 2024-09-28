@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://ducri6vmy0wve"
+path="res://.godot/imported/diffuse_map.glsl-cb478b1f09acc1dbba515555f05c9568.res"
+
+[deps]
+
+source_file="res://diffuse_map.glsl"
+dest_files=["res://.godot/imported/diffuse_map.glsl-cb478b1f09acc1dbba515555f05c9568.res"]
+
+[params]
+

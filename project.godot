@@ -24,5 +24,7 @@ settings/stdout/print_fps=true
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
-window/size/mode=2
+window/size/mode=3
+window/size/resizable=false
+window/stretch/mode="canvas_items"
 window/vsync/vsync_mode=0
