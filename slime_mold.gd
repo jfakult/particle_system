@@ -88,6 +88,8 @@ func init_agent(center):
 	var num_species = GameSettings.slime_settings.species_settings.size()
 	var species_index : int = 0
 	var species_mask : Vector4 = Vector4.ONE
+	var confusion_chance : float = GameSettings.slime_settings.confusion_chance
+	var confusion_timer : float = GameSettings.slime_settings.confusion_timer
 
 	if num_species == 1:
 		species_mask = GameSettings.slime_settings.species_settings[0].colour
@@ -101,10 +103,12 @@ func init_agent(center):
 			species_mask = Vector4(0, 0, 1, 1)
 
 	return {
+		"species_mask": species_mask,
 		"position": start_pos,
 		"angle": angle,
-		"species_mask": species_mask,
-		"species_index": species_index
+		"species_index": species_index,
+		"confusion_chance": confusion_chance,
+		"confusion_timer": confusion_timer
 	}
 
 func init_agents():
@@ -170,6 +174,8 @@ func _ready():
 		agents_list.append(agent["position"])
 		agents_list.append(agent["angle"])
 		agents_list.append(agent["species_index"])
+		agents_list.append(agent["confusion_chance"])
+		agents_list.append(agent["confusion_timer"])
 
 	shader_agents_buffer = pack_array(agents_list)
 

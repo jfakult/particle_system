@@ -10,6 +10,8 @@ struct AgentData {
     vec2 position;     // byte 16-23 (valid as aligned to 16 bytes)
     float angle;       // byte 24-27 (valid as aligned to 4 bytes) 
     int species_index; // byte 28-31 (valid as aligned to 4 bytes)
+    float confusion_chance;
+    float confusion_timer;
 };
 layout(set = 0, binding = 0, std430) restrict buffer AgentsBuffer {
     AgentData agents[];
@@ -118,6 +120,7 @@ void main() {
     }
 
     AgentData agent = agents_buffer.agents[id];
+    agent.confusion_timer -= float_data.delta_time;
 
     //dot(agent.position.x, agent.position.y, vec4(0,1,0,1), 2);
     
@@ -126,33 +129,39 @@ void main() {
     SpeciesData species = species_buffer.species[0];
 
     uint random = hash(uint(agent.position.y * screen_size.x + agent.position.x + hash(id + uint(float_data.delta_time * 100000.0))));
-
-    float sensor_angle = species.sensor_angle;
-    float forward_weight = sense(agent, species, 0.0);
-    float left_weight = sense(agent, species, sensor_angle);
-    float right_weight = sense(agent, species, -sensor_angle);
-
     float random_steer_strength = scale_to_range_01(random) * species.random_steer_strength;
     float turn_speed = species.turn_speed * 2.0 * 3.1415;
 
-    /*
-    float total_weight = forward_weight + left_weight + right_weight + 0.0001;
-    float random_weight = scale_to_range_01(random);
+    if (false && agent.confusion_timer <= 0)
+    {
+        float sensor_angle = species.sensor_angle;
+        float forward_weight = sense(agent, species, 0.0);
+        float left_weight = sense(agent, species, sensor_angle);
+        float right_weight = sense(agent, species, -sensor_angle);
 
-    agent.angle += ( pow(right_weight / total_weight, 2) - pow(left_weight / total_weight, 2) ) * (1 - forward_weight / total_weight) * random_steer_strength;
-    */
-    if (forward_weight > left_weight && forward_weight > right_weight) {
-        agent.angle += 0.0;
+        /*
+        float total_weight = forward_weight + left_weight + right_weight + 0.0001;
+        float random_weight = scale_to_range_01(random);
+
+        agent.angle += ( pow(right_weight / total_weight, 2) - pow(left_weight / total_weight, 2) ) * (1 - forward_weight / total_weight) * random_steer_strength;
+        */
+        if (forward_weight > left_weight && forward_weight > right_weight) {
+            agent.angle += 0.0;
+        }
+        else if (left_weight > right_weight) {
+            agent.angle += random_steer_strength * turn_speed * float_data.delta_time;
+        }
+        else if (right_weight > left_weight) {
+            agent.angle -= random_steer_strength * turn_speed * float_data.delta_time;
+        }
+        else { // (forward_weight < left_weight && forward_weight < right_weight)
+            agent.angle += (random_steer_strength - 0.5) * 2 * turn_speed * float_data.delta_time;
+        }
     }
-    else if (left_weight > right_weight) {
-        agent.angle += random_steer_strength * turn_speed * float_data.delta_time;
+    else
+    {
+        agent.angle += species.turn_speed * (random_steer_strength - random_steer_strength / 2) * float_data.delta_time;
     }
-    else if (right_weight > left_weight) {
-        agent.angle -= random_steer_strength * turn_speed * float_data.delta_time;
-    }
-    else { // (forward_weight < left_weight && forward_weight < right_weight)
-		agent.angle += (random_steer_strength - 0.5) * 2 * turn_speed * float_data.delta_time;
-	}
 
     vec2 direction = vec2(cos(agent.angle), sin(agent.angle));
     vec2 new_pos = agent.position + direction * species.move_speed * float_data.delta_time;
