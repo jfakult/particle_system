@@ -99,8 +99,6 @@ func init_agents():
 			"species_index": species_index
 		})
 
-		print(agents[-1])
-
 	return agents
 
 func build_shader_buffer(buffer, uniform_type, binding):
@@ -222,9 +220,9 @@ func run_simulation(delta: float):
 	rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
 	rd.compute_list_bind_uniform_set(compute_list, uniform_set, 0)
 
-	# Dispatch compute shader
+	# Dispatch compute shader, device limit is 65535
 	@warning_ignore("integer_division")
-	rd.compute_list_dispatch(compute_list, ceil(slime_settings.num_agents / 1.0) + 1, 1, 1)
+	rd.compute_list_dispatch(compute_list, ceil(slime_settings.num_agents / 128.0) + 1, 1, 1)
 	rd.compute_list_end()
 
 	# Submit to GPU and wait for sync
@@ -238,7 +236,7 @@ func run_simulation(delta: float):
 	material.set_shader_parameter("trail_map", image_texture)
 
 
-	var agent_byte_data = rd.buffer_get_data(shader_agents_buffer)
-	var first_agent_pos : Vector2 = Vector2(agent_byte_data.decode_float(0), agent_byte_data.decode_float(4))
-	var second_agent_pos : Vector2 = Vector2(agent_byte_data.decode_float(32), agent_byte_data.decode_float(36))
-	print(first_agent_pos, second_agent_pos)
+	#var agent_byte_data = rd.buffer_get_data(shader_agents_buffer)
+	#var first_agent_pos : Vector2 = Vector2(agent_byte_data.decode_float(0), agent_byte_data.decode_float(4))
+	#var second_agent_pos : Vector2 = Vector2(agent_byte_data.decode_float(32), agent_byte_data.decode_float(36))
+	#print(first_agent_pos, second_agent_pos)

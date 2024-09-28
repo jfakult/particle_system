@@ -3,7 +3,7 @@
 #[compute]
 #version 460
 
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
 struct AgentData {
     vec4 species_mask; // byte 0-15
@@ -54,6 +54,11 @@ float scale_to_range_01(uint state) {
     return state / 4294967295.0;
 }
 
+/*
+The sensor sits "in front of" the agent, either to the front, the left, or the right.
+The sum we calculate loops over the pixels around the sensor's location.
+Dot product tests how close the color of that pixel is to the agents color
+*/
 float sense(AgentData agent, SpeciesData species, float sensor_angle_offset) {
     // Calculate the sensor angle and direction
     float sensor_angle = agent.angle + sensor_angle_offset;
@@ -61,16 +66,14 @@ float sense(AgentData agent, SpeciesData species, float sensor_angle_offset) {
 
     // Calculate the sensor position by offsetting the agent's position
     vec2 sensor_pos = agent.position + sensor_dir * species.sensor_offset;
+    // Sensor center in integer coordinates
+    int sensor_center_x = int(sensor_pos.x);
+    int sensor_center_y = int(sensor_pos.y);
 
     // Initialize the sum to accumulate trail values
     float sum = 0.0;
 
-    // Convert species mask to an int3, matching the Unity version
-    ivec3 sense_weight = ivec3(agent.species_mask * 2.0 - 1.0);
-
-    // Sensor center in integer coordinates
-    int sensor_center_x = int(sensor_pos.x);
-    int sensor_center_y = int(sensor_pos.y);
+    vec4 sense_weight = agent.species_mask * 2.0 - 1.0;
 
     // Iterate over the grid around the sensor position
     for (int offset_x = -species.sensor_size; offset_x <= species.sensor_size; offset_x++) {
@@ -79,11 +82,8 @@ float sense(AgentData agent, SpeciesData species, float sensor_angle_offset) {
             int sample_x = min(screen_size.x - 1, max(0, sensor_center_x + offset_x));
             int sample_y = min(screen_size.y - 1, max(0, sensor_center_y + offset_y));
 
-            // Fetch the trail value from the trail map texture
-            vec4 trail_value = imageLoad(trail_map, ivec2(sample_x, sample_y));
-
             // Sum the weighted trail values using the species mask
-            sum += dot(vec3(sense_weight), trail_value.rgb);
+            sum += dot( sense_weight, imageLoad(trail_map, ivec2(sample_x, sample_y)) );
         }
     }
 
@@ -130,14 +130,15 @@ void main() {
     if (forward_weight > left_weight && forward_weight > right_weight) {
         agent.angle += 0.0;
     }
-    else if (forward_weight < left_weight && forward_weight < right_weight) {
-		agent.angle += (random_steer_strength - 0.5) * 2 * turn_speed * float_data.delta_time;
-	}
     else if (left_weight > right_weight) {
         agent.angle += random_steer_strength * turn_speed * float_data.delta_time;
-    } else {
+    }
+    else if (right_weight > left_weight) {
         agent.angle -= random_steer_strength * turn_speed * float_data.delta_time;
     }
+    else { // (forward_weight < left_weight && forward_weight < right_weight)
+		agent.angle += (random_steer_strength - 0.5) * 2 * turn_speed * float_data.delta_time;
+	}
 
     vec2 direction = vec2(cos(agent.angle), sin(agent.angle));
     vec2 new_pos = agent.position + direction * species.move_speed * float_data.delta_time;
