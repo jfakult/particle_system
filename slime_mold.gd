@@ -24,6 +24,7 @@ var trail_map_texture
 var screen_size_uniform: RDUniform
 var floats_uniform: RDUniform
 
+var agents: Array = []
 
 func pack_array(data):
 	var packed_bytes = pack_array_data(data)
@@ -55,54 +56,62 @@ func pack_array_data(data):
 
 	return packed_bytes
 
+func init_agent(center):
+	var start_pos = Vector2()
+	var random_angle : float = randf() * PI * 2
+	var angle : float = 0.0
+
+	match GameSettings.slime_settings.spawn_mode:
+		GameSettings.slime_settings.SpawnMode.POINT:
+			start_pos = center
+			angle = random_angle
+		GameSettings.slime_settings.SpawnMode.RANDOM:
+			start_pos = Vector2(randi() % GameSettings.slime_settings.width, randi() % GameSettings.slime_settings.height)
+			angle = random_angle
+		GameSettings.slime_settings.SpawnMode.INWARD_CIRCLE:
+			start_pos = center + (Vector2(randf() - 0.5, randf() - 0.5)) * Vector2(randf(), randf()).normalized() * (GameSettings.slime_settings.height / 2.0) 
+			angle = (center - start_pos).angle()
+		GameSettings.slime_settings.SpawnMode.INWARD_SQUARE:
+			start_pos = center + (Vector2(randf() - 0.5, randf() - 0.5)) * (GameSettings.slime_settings.height / 2.0) 
+			angle = (center - start_pos).angle()
+		GameSettings.slime_settings.SpawnMode.RANDOM_CIRCLE:
+			start_pos = center + Vector2(randf(), randf()).normalized() * GameSettings.slime_settings.height * 0.15
+			angle = random_angle
+
+	# Randomly assign species
+	var num_species = GameSettings.slime_settings.species_settings.size()
+	var species_index : int = 0
+	var species_mask : Vector4 = Vector4.ONE
+
+	if num_species == 1:
+		species_mask = GameSettings.slime_settings.species_settings[0].colour
+	elif num_species > 1:
+		species_index = randi() % num_species
+		if species_index == 0:
+			species_mask = Vector4(1, 0, 0, 1)
+		elif species_index == 1:
+			species_mask = Vector4(0, 1, 0, 1)
+		elif species_index == 2:
+			species_mask = Vector4(0, 0, 1, 1)
+
+	return {
+		"position": start_pos,
+		"angle": angle,
+		"species_mask": species_mask,
+		"species_index": species_index
+	}
+
 func init_agents():
-	var agents = []
 	# Initialize agents
 	var center = Vector2(GameSettings.slime_settings.width / 2.0, GameSettings.slime_settings.height / 2.0)
-	for i in range(GameSettings.slime_settings.num_agents):
-		var start_pos = Vector2()
-		var random_angle : float = randf() * PI * 2
-		var angle : float = 0.0
 
-		match GameSettings.slime_settings.spawn_mode:
-			GameSettings.slime_settings.SpawnMode.POINT:
-				start_pos = center
-				angle = random_angle
-			GameSettings.slime_settings.SpawnMode.RANDOM:
-				start_pos = Vector2(randi() % GameSettings.slime_settings.width, randi() % GameSettings.slime_settings.height)
-				angle = random_angle
-			GameSettings.slime_settings.SpawnMode.INWARD_CIRCLE:
-				start_pos = center + (Vector2(randf() - 0.5, randf() - 0.5)) * Vector2(randf(), randf()).normalized() * (GameSettings.slime_settings.height / 2.0) 
-				angle = (center - start_pos).angle()
-			GameSettings.slime_settings.SpawnMode.INWARD_SQUARE:
-				start_pos = center + (Vector2(randf() - 0.5, randf() - 0.5)) * (GameSettings.slime_settings.height / 2.0) 
-				angle = (center - start_pos).angle()
-			GameSettings.slime_settings.SpawnMode.RANDOM_CIRCLE:
-				start_pos = center + Vector2(randf(), randf()).normalized() * GameSettings.slime_settings.height * 0.15
-				angle = random_angle
-
-		# Randomly assign species
-		var num_species = GameSettings.slime_settings.species_settings.size()
-		var species_index : int = 0
-		var species_mask : Vector4 = Vector4.ONE
-
-		if num_species == 1:
-			species_mask = GameSettings.slime_settings.species_settings[0].colour
-		elif num_species > 1:
-			species_index = randi() % num_species
-			if species_index == 0:
-				species_mask = Vector4(1, 0, 0, 1)
-			elif species_index == 1:
-				species_mask = Vector4(0, 1, 0, 1)
-			elif species_index == 2:
-				species_mask = Vector4(0, 0, 1, 1)
-
-		agents.append({
-			"position": start_pos,
-			"angle": angle,
-			"species_mask": species_mask,
-			"species_index": species_index
-		})
+	if GameSettings.slime_settings.num_agents < len(agents):
+		agents.resize(GameSettings.slime_settings.num_agents)
+	else: # GameSettings.slime_settings.num_agents > len(agents):
+		# Add new agents
+		while len(agents) < GameSettings.slime_settings.num_agents:
+			var agent = init_agent(center)
+			agents.append(agent)
 
 	return agents
 
@@ -195,7 +204,11 @@ func _process(delta: float):
 		return
 
 	GameSettings.update_settings()
-	
+
+	if GameSettings.slime_settings.num_agents != len(agents):
+		print("Updating agents")
+		agents = init_agents()
+		
 	for i in range(GameSettings.slime_settings.steps_per_frame):
 		run_simulation(delta)
 

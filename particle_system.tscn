@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3 uid="uid://bpqk2gom5ybs4"]
+[gd_scene load_steps=6 format=3 uid="uid://bpqk2gom5ybs4"]
 
 [ext_resource type="Shader" path="res://slime.gdshader" id="1_kcq2c"]
 [ext_resource type="Script" path="res://slime_mold.gd" id="2_66wie"]
 [ext_resource type="Script" path="res://fps_label.gd" id="3_i23t8"]
+[ext_resource type="PackedScene" uid="uid://ke8uv6brutb5" path="res://settings.tscn" id="4_banj6"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_638ch"]
 shader = ExtResource("1_kcq2c")
@@ -24,3 +25,5 @@ offset_right = 1280.0
 offset_bottom = 800.0
 color = Color(0.560901, 0.309025, 0.387433, 1)
 script = ExtResource("2_66wie")
+
+[node name="Settings" parent="." instance=ExtResource("4_banj6")]

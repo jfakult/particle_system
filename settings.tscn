@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3 uid="uid://ke8uv6brutb5"]
+
+[ext_resource type="Script" path="res://settings.gd" id="1_pwexk"]
+
+[node name="Settings" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+
+[node name="Panel" type="Panel" parent="."]
+layout_mode = 0
+offset_right = 440.0
+offset_bottom = 300.0
+script = ExtResource("1_pwexk")
