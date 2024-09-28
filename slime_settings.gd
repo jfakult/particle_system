@@ -19,8 +19,8 @@ var diffuse_rate: float
 # Species settings as an array of SpeciesSettings resources
 var species_settings: Array[SpeciesSettings]
 
-func _init(_steps_per_frame: int = 1, _width: int = 1280, _height: int = 720, _num_agents: int = 100,
-           _spawn_mode: int = SpawnMode.RANDOM, _trail_weight: float = 5.0, _decay_rate: float = 1.0,
+func _init(_steps_per_frame: int = 1, _width: int = 1280, _height: int = 720, _num_agents: int = 10000,
+           _spawn_mode: int = SpawnMode.RANDOM, _trail_weight: float = 1.0, _decay_rate: float = 1.0,
            _diffuse_rate: float = 1.0, _species_settings: Array[SpeciesSettings] = [SpeciesSettings.new()]):
     steps_per_frame = _steps_per_frame
     width = _width
