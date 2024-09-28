@@ -55,6 +55,8 @@ func _ready():
 		"trail_weight": [ GameSettings.trail_weight, 0, 200, 0.05 ],
 		"decay_rate": [ GameSettings.decay_rate, 0.7, 1.0004, 0.004 ],
 		"diffuse_rate": [ GameSettings.diffuse_rate, 0, 100, 1 ],
+		"confusion_chance": [ GameSettings.confusion_chance, 0, 10, 0.1 ],
+		"confusion_timeout": [ GameSettings.confusion_timeout, 0, 10, 0.1 ],
 		"move_speed": [ GameSettings.move_speed, 1, 1000, 10 ],
 		"turn_speed": [ GameSettings.turn_speed, 0, 5, 0.1 ],
 		"random_steer_strength": [ GameSettings.random_steer_strength, 0, 10, 0.1 ],

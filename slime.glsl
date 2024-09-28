@@ -6,25 +6,36 @@
 layout(local_size_x = 512, local_size_y = 1, local_size_z = 1) in;
 
 struct AgentData {
-    vec4 species_mask; // byte 0-15
-    vec2 position;     // byte 16-23 (valid as aligned to 16 bytes)
-    float angle;       // byte 24-27 (valid as aligned to 4 bytes) 
-    int species_index; // byte 28-31 (valid as aligned to 4 bytes)
-    float confusion_chance;
+    vec4 species_mask;      // byte 0-15
+
+    vec2 position;          // byte 16-23 (valid as aligned to 16 bytes)
+    float angle;            // byte 24-27 (valid as aligned to 4 bytes)
+    int species_index;      // byte 28-31 (valid as aligned to 4 bytes)
+
+    // Next block of 16
     float confusion_timer;
+    float padding1;           // Pad the struct to align to 16 bytes
+    float padding2;           // Pad the struct to align to 16 bytes
+    float padding3;           // Pad the struct to align to 16 bytes
 };
 layout(set = 0, binding = 0, std430) restrict buffer AgentsBuffer {
     AgentData agents[];
 } agents_buffer;
 
 struct SpeciesData {
+    vec4 color;
+
+    // Next block of 16
     float move_speed;
     float turn_speed;
     float random_steer_strength;
     float sensor_angle;
+
+    // Next block of 16
     float sensor_offset;
     int sensor_size;
-    vec4 color;
+    float confusion_chance;
+    float confusion_timeout;
 };
 layout(set = 0, binding = 1, std430) restrict buffer SpeciesBuffer {
     SpeciesData species[];
@@ -129,10 +140,17 @@ void main() {
     SpeciesData species = species_buffer.species[0];
 
     uint random = hash(uint(agent.position.y * screen_size.x + agent.position.x + hash(id + uint(float_data.delta_time * 100000.0))));
-    float random_steer_strength = scale_to_range_01(random) * species.random_steer_strength;
+
+    // Agents have a chance to become confused and randomly follow some paths
+    if (scale_to_range_01(random) < (species.confusion_chance * float_data.delta_time))
+    {
+        agent.confusion_timer = species.confusion_timeout;
+    }
+
+    float random_steer_strength = (scale_to_range_01(random) - 0.5) * 2 * species.random_steer_strength;
     float turn_speed = species.turn_speed * 2.0 * 3.1415;
 
-    if (false && agent.confusion_timer <= 0)
+    if (agent.confusion_timer <= 0)
     {
         float sensor_angle = species.sensor_angle;
         float forward_weight = sense(agent, species, 0.0);
@@ -155,12 +173,12 @@ void main() {
             agent.angle -= random_steer_strength * turn_speed * float_data.delta_time;
         }
         else { // (forward_weight < left_weight && forward_weight < right_weight)
-            agent.angle += (random_steer_strength - 0.5) * 2 * turn_speed * float_data.delta_time;
+            agent.angle += random_steer_strength * turn_speed * float_data.delta_time;
         }
     }
     else
     {
-        agent.angle += species.turn_speed * (random_steer_strength - random_steer_strength / 2) * float_data.delta_time;
+        agent.angle += species.turn_speed * (scale_to_range_01(random) - 0.5) * float_data.delta_time;
     }
 
     vec2 direction = vec2(cos(agent.angle), sin(agent.angle));

@@ -88,8 +88,6 @@ func init_agent(center):
 	var num_species = GameSettings.slime_settings.species_settings.size()
 	var species_index : int = 0
 	var species_mask : Vector4 = Vector4.ONE
-	var confusion_chance : float = GameSettings.slime_settings.confusion_chance
-	var confusion_timer : float = GameSettings.slime_settings.confusion_timer
 
 	if num_species == 1:
 		species_mask = GameSettings.slime_settings.species_settings[0].colour
@@ -107,13 +105,59 @@ func init_agent(center):
 		"position": start_pos,
 		"angle": angle,
 		"species_index": species_index,
-		"confusion_chance": confusion_chance,
-		"confusion_timer": confusion_timer
+		"confusion_timer": 0.0
 	}
 
 func init_agents():
+	if len(agents) == 0 or GameSettings.slime_settings.num_agents != len(agents):
+		if len(agents) > 0:
+			print("Pulling new data")
+			# Pull agent data from the compute buffer and rebuild the agent list
+			var agents_data = rd.buffer_get_data(shader_agents_buffer)
+			agents = []
+			var data_pos = 0
+			while data_pos < agents_data.size():
+				var species_mask = Vector4(agents_data.decode_float(data_pos), agents_data.decode_float(data_pos + 4), agents_data.decode_float(data_pos + 8), agents_data.decode_float(data_pos + 12))
+				var position = Vector2(agents_data.decode_float(data_pos + 16), agents_data.decode_float(data_pos + 20))
+				var angle = agents_data.decode_float(data_pos + 24)
+				var species_index = agents_data.decode_float(data_pos + 28)
+				var confusion_timer = agents_data.decode_float(data_pos + 32)
+				agents.append({
+					"species_mask": species_mask,
+					"position": position,
+					"angle": angle,
+					"species_index": species_index,
+					"confusion_timer": confusion_timer
+				})
+				# Agent blocks are 48 bytes long because of padding
+				data_pos += 48
+			# todo: pull agent data back out and rebuild it
+
+		init_agents_wrapper()
+		var agents_list = []
+		for agent in agents:
+			# Note that the order of these values must match the order in the shader
+			# Notes in shader explain the packing process / byte alignment
+			agents_list.append(agent["species_mask"])
+			agents_list.append(agent["position"])
+			agents_list.append(agent["angle"])
+			agents_list.append(agent["species_index"])
+			agents_list.append(agent["confusion_timer"])
+			agents_list.append(0.0) # padding
+			agents_list.append(0.0) # padding
+			agents_list.append(0.0) # padding
+
+			#if len(agents_list) == 6:
+			#	print("Length", pack_array_data(agents_list).size())
+
+
+		shader_agents_buffer = pack_array(agents_list)
+
+func init_agents_wrapper():
 	# Initialize agents
 	var center = Vector2(GameSettings.slime_settings.width / 2.0, GameSettings.slime_settings.height / 2.0)
+
+	print("Settings: ", GameSettings.slime_settings.num_agents, " vs ", len(agents))
 
 	if GameSettings.slime_settings.num_agents < len(agents):
 		agents.resize(GameSettings.slime_settings.num_agents)
@@ -122,8 +166,6 @@ func init_agents():
 		while len(agents) < GameSettings.slime_settings.num_agents:
 			var agent = init_agent(center)
 			agents.append(agent)
-
-	return agents
 
 func build_shader_buffer(buffer, uniform_type, binding):
 	var uniform := RDUniform.new()
@@ -164,20 +206,7 @@ func _ready():
 	var shader_spirv2: RDShaderSPIRV = shader_file2.get_spirv()
 	diffuse_shader = rd.shader_create_from_spirv(shader_spirv2)
 	
-
-	agents = init_agents()
-	var agents_list = []
-	for agent in agents:
-		# Note that the order of these values must match the order in the shader
-		# Notes in shader explain the packing process / byte alignment
-		agents_list.append(agent["species_mask"])
-		agents_list.append(agent["position"])
-		agents_list.append(agent["angle"])
-		agents_list.append(agent["species_index"])
-		agents_list.append(agent["confusion_chance"])
-		agents_list.append(agent["confusion_timer"])
-
-	shader_agents_buffer = pack_array(agents_list)
+	init_agents()
 
 	#print("----", pack_array_data(agents_list).size())
 	#var first_agent_pos : Vector2 = Vector2(pack_array_data(agents_list).decode_float(0), pack_array_data(agents_list).decode_float(4))
@@ -220,10 +249,7 @@ func _process(delta: float):
 		return
 
 	GameSettings.update_settings()
-
-	if GameSettings.slime_settings.num_agents != len(agents):
-		print("Updating agents")
-		agents = init_agents()
+	init_agents()
 		
 	for i in range(GameSettings.slime_settings.steps_per_frame):
 		run_simulation(delta)
@@ -231,13 +257,18 @@ func _process(delta: float):
 func rebuild_shader_buffers(delta: float):
 	var species_settings_list = []
 	for species in GameSettings.slime_settings.species_settings:
+		species_settings_list.append(species.colour)
 		species_settings_list.append(species.move_speed)
 		species_settings_list.append(species.turn_speed)
 		species_settings_list.append(species.random_steer_strength)
 		species_settings_list.append(species.sensor_angle_spacing)
 		species_settings_list.append(species.sensor_offset_dst)
 		species_settings_list.append(species.sensor_size)
-		species_settings_list.append(species.colour)
+		species_settings_list.append(species.confusion_chance)
+		species_settings_list.append(species.confusion_timeout)
+
+		#if len(species_settings_list) == 9:
+		#	print("Length", pack_array_data(species_settings_list).size())
 
 	var species_buffer = pack_array(species_settings_list)
 	species_uniform = build_shader_buffer(species_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 1)
@@ -272,7 +303,7 @@ func run_agents_compute():
 
 	rd.compute_list_bind_uniform_set(compute_list, agent_uniform_set, 0)
 	rd.compute_list_bind_compute_pipeline(compute_list, agents_pipeline)
-	rd.compute_list_dispatch(compute_list, ceil(GameSettings.slime_settings.num_agents / AGENT_DISPATCH_SIZE), 1, 1)
+	rd.compute_list_dispatch(compute_list, ceil(GameSettings.slime_settings.num_agents / AGENT_DISPATCH_SIZE) + 1, 1, 1)
 
 	rd.compute_list_end()
 
