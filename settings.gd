@@ -46,12 +46,14 @@ func nice_num(num: float) -> String:
 	return str(snapped(num, 0.01))
 
 func _ready():
+	set_physics_process(false)
+
 	# Call the function to add a slider with a label to the current node (e.g., a Control node)
 	var sliders = {
 		# name :  [ initial_value, min_value, max_value, step ]
-		"num_agents": [ GameSettings.num_agents, 100, 100000, 1000 ],
-		"trail_weight": [ GameSettings.trail_weight, 0, 20, 0.05 ],
-		"decay_rate": [ GameSettings.decay_rate, 0.7, 1, 0.003 ],
+		"num_agents": [ GameSettings.num_agents, 10, 250010, 1000 ],
+		"trail_weight": [ GameSettings.trail_weight, 0, 200, 0.05 ],
+		"decay_rate": [ GameSettings.decay_rate, 0.7, 1.0004, 0.004 ],
 		"diffuse_rate": [ GameSettings.diffuse_rate, 0, 100, 1 ],
 		"move_speed": [ GameSettings.move_speed, 1, 1000, 10 ],
 		"turn_speed": [ GameSettings.turn_speed, 0, 5, 0.1 ],

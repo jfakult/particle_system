@@ -3,6 +3,10 @@ extends ColorRect
 var show_agents_only = false
 #var GameSettings = preload("res://path_to_your_GameSettings.gd").new()
 
+var IMAGE_PRECISION = Image.FORMAT_RGBAH
+var TEXTURE_BUFFER_PRECISION = RenderingDevice.DATA_FORMAT_R16G16B16A16_SFLOAT
+var AGENT_DISPATCH_SIZE = 512
+
 var trail_map: ImageTexture
 var diffused_trail_map: ImageTexture
 var display_texture: ImageTexture
@@ -16,6 +20,8 @@ var agents_pipeline
 var diffuse_pipeline
 
 var shader_agents_buffer
+var agent_uniform_set: RID
+var diffuse_uniform_set: RID
 var agents_uniform: RDUniform
 var species_uniform: RDUniform
 var trail_map_image: Image
@@ -125,23 +131,27 @@ func build_shader_buffer(buffer, uniform_type, binding):
 
 # On ready
 func _ready():
+	set_physics_process(false)
+
 	# Create render textures
 	# https://github.com/godotengine/godot-docs/issues/4834
 	var fmt = RDTextureFormat.new()
 	fmt.width = GameSettings.slime_settings.width
 	fmt.height = GameSettings.slime_settings.height
-	fmt.format = RenderingDevice.DATA_FORMAT_R32G32B32A32_SFLOAT
+	# Data formats: https://docs.godotengine.org/en/stable/classes/class_renderingdevice.html
+	fmt.format = TEXTURE_BUFFER_PRECISION
 	fmt.usage_bits = RenderingDevice.TEXTURE_USAGE_STORAGE_BIT + RenderingDevice.TEXTURE_USAGE_CAN_UPDATE_BIT + RenderingDevice.TEXTURE_USAGE_CAN_COPY_FROM_BIT
 
-	trail_map_image = Image.create(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, Image.FORMAT_RGBAF)
+	# Image texture formats: https://docs.godotengine.org/en/stable/classes/class_image.html
+	trail_map_image = Image.create(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, IMAGE_PRECISION)
 	trail_map_image.fill(Color(0.0, 0.0, 0.0, 1))
 	trail_map_texture = rd.texture_create(fmt, RDTextureView.new(), [trail_map_image.get_data()])
 
-	var diffused_trail_image : Image = Image.create(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, Image.FORMAT_RGBAF)
-	diffused_trail_map = ImageTexture.create_from_image(diffused_trail_image)
+	#var diffused_trail_image : Image = Image.create(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, IMAGE_PRECISION)
+	#diffused_trail_map = ImageTexture.create_from_image(diffused_trail_image)
 
-	var display_image : Image = Image.create(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, Image.FORMAT_RGBAF)
-	display_texture = ImageTexture.create_from_image(display_image)
+	#var display_image : Image = Image.create(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, IMAGE_PRECISION)
+	#display_texture = ImageTexture.create_from_image(display_image)
 
 	var shader_file = load("res://slime.glsl")
 	var shader_spirv: RDShaderSPIRV = shader_file.get_spirv()
@@ -151,7 +161,7 @@ func _ready():
 	diffuse_shader = rd.shader_create_from_spirv(shader_spirv2)
 	
 
-	var agents = init_agents()
+	agents = init_agents()
 	var agents_list = []
 	for agent in agents:
 		# Note that the order of these values must match the order in the shader
@@ -212,8 +222,7 @@ func _process(delta: float):
 	for i in range(GameSettings.slime_settings.steps_per_frame):
 		run_simulation(delta)
 
-# Run a single step of the simulation
-func run_simulation(delta: float):
+func rebuild_shader_buffers(delta: float):
 	var species_settings_list = []
 	for species in GameSettings.slime_settings.species_settings:
 		species_settings_list.append(species.move_speed)
@@ -237,7 +246,7 @@ func run_simulation(delta: float):
 	#rd.texture_update(trail_map_texture, 0, trail_map_image.get_data())
 
 	# Create the uniform set
-	var uniform_set = rd.uniform_set_create([
+	agent_uniform_set = rd.uniform_set_create([
 		agents_uniform,
 		species_uniform,
 		trail_map_uniform,
@@ -246,19 +255,18 @@ func run_simulation(delta: float):
 	], agents_shader, 0)
 
 
-	var uniform_set2 = rd.uniform_set_create([
+	diffuse_uniform_set = rd.uniform_set_create([
 		trail_map_uniform,
 		screen_size_uniform,
 		floats_uniform
 	], diffuse_shader, 0)
 
-	# Dispatch compute shader, device limit is 65535
-
+func run_agents_compute():
 	compute_list = rd.compute_list_begin()
 
-	rd.compute_list_bind_uniform_set(compute_list, uniform_set, 0)
+	rd.compute_list_bind_uniform_set(compute_list, agent_uniform_set, 0)
 	rd.compute_list_bind_compute_pipeline(compute_list, agents_pipeline)
-	rd.compute_list_dispatch(compute_list, ceil(GameSettings.slime_settings.num_agents / 128.0), 1, 1)
+	rd.compute_list_dispatch(compute_list, ceil(GameSettings.slime_settings.num_agents / AGENT_DISPATCH_SIZE), 1, 1)
 
 	rd.compute_list_end()
 
@@ -266,9 +274,10 @@ func run_simulation(delta: float):
 	rd.submit()
 	rd.sync()
 
+func run_diffuse_compute():
 	compute_list = rd.compute_list_begin()
 
-	rd.compute_list_bind_uniform_set(compute_list, uniform_set2, 0)
+	rd.compute_list_bind_uniform_set(compute_list, diffuse_uniform_set, 0)
 	rd.compute_list_bind_compute_pipeline(compute_list, diffuse_pipeline)
 	rd.compute_list_dispatch(compute_list, ceil(GameSettings.slime_settings.width / 16.0), ceil(GameSettings.slime_settings.height / 16.0), 1)
 
@@ -278,15 +287,26 @@ func run_simulation(delta: float):
 	rd.submit()
 	rd.sync()
 
+func send_texture_to_colorrect_shader():
+	var byte_data = rd.texture_get_data(trail_map_texture, 0)
+	# Image texture formats: https://docs.godotengine.org/en/stable/classes/class_image.html
+	var image = Image.create_from_data(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, IMAGE_PRECISION, byte_data)
+	var image_texture = ImageTexture.create_from_image(image)
+	material.set_shader_parameter("trail_map", image_texture)
+
+# Run a single step of the simulation
+func run_simulation(delta: float):
+	rebuild_shader_buffers(delta)
+
+	# Dispatch compute shader, device limit is 65535
+
+	run_agents_compute()
+
+	run_diffuse_compute()
 
 	#var agent_byte_data = rd.buffer_get_data(shader_agents_buffer)
 	#var first_agent_pos : Vector2 = Vector2(agent_byte_data.decode_float(0), agent_byte_data.decode_float(4))
 	#var second_agent_pos : Vector2 = Vector2(agent_byte_data.decode_float(32), agent_byte_data.decode_float(36))
 	#print(first_agent_pos, second_agent_pos)
 
-
-	# Read the texture and send it to the colorRect's shader for display
-	var byte_data = rd.texture_get_data(trail_map_texture, 0)
-	var image = Image.create_from_data(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, Image.FORMAT_RGBAF, byte_data)
-	var image_texture = ImageTexture.create_from_image(image)
-	material.set_shader_parameter("trail_map", image_texture)
+	send_texture_to_colorrect_shader()

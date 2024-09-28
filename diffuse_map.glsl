@@ -29,7 +29,7 @@ layout(set = 0, binding = 1, std430) restrict buffer SpeciesBuffer {
 } species_buffer;
 */
 
-layout(set=0, binding=2, rgba32f) uniform image2D trail_map;
+layout(set=0, binding=2, rgba16f) uniform image2D trail_map;
 
 layout(set=0, binding=3) restrict buffer ScreenSizeBuffer {
     int x;

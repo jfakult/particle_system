@@ -3,7 +3,7 @@
 #[compute]
 #version 460
 
-layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 512, local_size_y = 1, local_size_z = 1) in;
 
 struct AgentData {
     vec4 species_mask; // byte 0-15
@@ -28,7 +28,8 @@ layout(set = 0, binding = 1, std430) restrict buffer SpeciesBuffer {
     SpeciesData species[];
 } species_buffer;
 
-layout(set=0, binding=2, rgba32f) uniform image2D trail_map;
+// Data formats: https://www.khronos.org/opengl/wiki/Image_Load_Store
+layout(set=0, binding=2, rgba16f) uniform image2D trail_map;
 
 layout(set=0, binding=3) restrict buffer ScreenSizeBuffer {
     int x;
@@ -81,6 +82,10 @@ float sense(AgentData agent, SpeciesData species, float sensor_angle_offset) {
     // Iterate over the grid around the sensor position
     for (int offset_x = -species.sensor_size; offset_x <= species.sensor_size; offset_x++) {
         for (int offset_y = -species.sensor_size; offset_y <= species.sensor_size; offset_y++) {
+            // Check in a circular area to reduce imageLoad lookups, roughly double framerate
+            float distance = length(vec2(offset_x, offset_y));
+            if (distance > species.sensor_size) continue; // Skip farther pixels
+
             // Calculate sample positions, clamping them within bounds
             int sample_x = min(screen_size.x - 1, max(0, sensor_center_x + offset_x));
             int sample_y = min(screen_size.y - 1, max(0, sensor_center_y + offset_y));
@@ -115,7 +120,7 @@ void main() {
     AgentData agent = agents_buffer.agents[id];
 
     //dot(agent.position.x, agent.position.y, vec4(0,1,0,1), 2);
-
+    
     int species_index = agent.species_index;
     vec4 species_mask = agent.species_mask;
     SpeciesData species = species_buffer.species[0];
@@ -130,6 +135,12 @@ void main() {
     float random_steer_strength = scale_to_range_01(random) * species.random_steer_strength;
     float turn_speed = species.turn_speed * 2.0 * 3.1415;
 
+    /*
+    float total_weight = forward_weight + left_weight + right_weight + 0.0001;
+    float random_weight = scale_to_range_01(random);
+
+    agent.angle += ( pow(right_weight / total_weight, 2) - pow(left_weight / total_weight, 2) ) * (1 - forward_weight / total_weight) * random_steer_strength;
+    */
     if (forward_weight > left_weight && forward_weight > right_weight) {
         agent.angle += 0.0;
     }
@@ -153,18 +164,34 @@ void main() {
     //new_trail = vec4(1, 1, 1, 1);
 
     if (new_pos.x < 0.0 || new_pos.x >= screen_size.x || new_pos.y < 0.0 || new_pos.y >= screen_size.y) {
+        ivec2 dir_to_center =  ivec2(screen_size.x / 2, screen_size.y / 2) - ivec2(new_pos);
+        float angle_to_center = atan(dir_to_center.y, dir_to_center.x);
+        //agent.angle = angle_to_center;
+
+        // Pick a random angle
         random = hash(random);
-        float random_angle = scale_to_range_01(random) * 2.0 * 3.1415;
+        int x1 = int(scale_to_range_01(random) * screen_size.x);
+        random = hash(random);
+        int y1 = int(scale_to_range_01(random) * screen_size.y);
+
+        ivec2 random_direction = ivec2(x1, y1) - ivec2(new_pos.x, new_pos.y);
+        float random_angle = atan(random_direction.y, random_direction.x); // scale_to_range_01(random) * 2.0 * 3.1415;
         agent.angle = random_angle;
-        new_pos = clamp(new_pos, vec2(0.0), vec2(screen_size.x, screen_size.y));
+
+        /*
+        // Point to the midpoint of the center and the random angle
+        // This tends to break up clumping around edges
+        ivec2 v1 = ivec2(cos(angle_to_center), sin(angle_to_center));
+        ivec2 v2 = ivec2(cos(random_angle), sin(random_angle));
+        ivec2 total_vec = v1 + v2;
+        agent.angle = angle_to_center; //atan(total_vec.y, total_vec.x);
+        */
+
+        new_pos.x = min(screen_size.x-1,max(0, new_pos.x));
+		new_pos.y = min(screen_size.y-1,max(0, new_pos.y));
     }
 
     imageStore(trail_map, coord, new_trail);
-
-    if (new_pos.x < 0) { new_pos.x = 100; }
-    else if (new_pos.x > screen_size.x ) { new_pos.x = screen_size.x - 100; }
-    if (new_pos.y < 0) { new_pos.y = 100; }
-    else if (new_pos.y > screen_size.y ) { new_pos.y = screen_size.y - 100; }
 
     agent.position = new_pos;
 
