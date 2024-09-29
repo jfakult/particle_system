@@ -1,0 +1,5 @@
+[gd_scene format=3 uid="uid://cffbx17d1c32"]
+
+[node name="ShapeMasks" type="Node2D"]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]

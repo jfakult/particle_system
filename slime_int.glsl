@@ -42,24 +42,20 @@ layout(set = 0, binding = 1, std430) restrict buffer SpeciesBuffer {
 } species_buffer;
 
 // Data formats: https://www.khronos.org/opengl/wiki/Image_Load_Store
-layout(set=0, binding=2, rgba16f) uniform image2D trail_map;
+layout(set=0, binding=2, rgba8ui) uniform image2D trail_map;
 
-layout(set=0, binding=3) restrict buffer OtherDataBuffer {
-    ivec2 screen_size;
-    ivec2 shape_size;
+layout(set=0, binding=3) restrict buffer ScreenSizeBuffer {
+    int x;
+    int y;
+} screen_size;
+
+layout(set=0, binding=4) restrict buffer FloatDataBuffer {
     float trail_weight;
     float delta_time;
     float diffuse_rate;
     float decay_rate;
-    
-    // Next chunk of 16
     int num_agents;
-    float padding1;
-    float padding2;
-    float padding3;
-} buffer_data;
-
-layout(set=0, binding=4, rgba16f) uniform image2D shape_map;
+} float_data;
 
 uint hash(uint state) {
     state ^= 2747636419u;
@@ -73,6 +69,11 @@ uint hash(uint state) {
 
 float scale_to_range_01(uint state) {
     return state / 4294967295.0;
+}
+
+uint i_dot(uvec4 u1, uvec4 u1)
+{
+    return u1.x * u2.x + u1.y * u2.y + u1.z * u2.z + u1.w * u2.w;
 }
 
 /*
@@ -94,7 +95,7 @@ float sense(AgentData agent, SpeciesData species, float sensor_angle_offset) {
     // Initialize the sum to accumulate trail values
     float sum = 0.0;
 
-    vec4 sense_weight = agent.species_mask * 2.0 - 1.0;
+    uvec4 sense_weight = agent.species_mask * 2.0 - 1.0;
 
     // Iterate over the grid around the sensor position
     for (int offset_x = -species.sensor_size; offset_x <= species.sensor_size; offset_x++) {
@@ -104,8 +105,8 @@ float sense(AgentData agent, SpeciesData species, float sensor_angle_offset) {
             if (distance > species.sensor_size) continue; // Skip farther pixels
 
             // Calculate sample positions, clamping them within bounds
-            int sample_x = min(buffer_data.screen_size.x - 1, max(0, sensor_center_x + offset_x));
-            int sample_y = min(buffer_data.screen_size.y - 1, max(0, sensor_center_y + offset_y));
+            int sample_x = min(screen_size.x - 1, max(0, sensor_center_x + offset_x));
+            int sample_y = min(screen_size.y - 1, max(0, sensor_center_y + offset_y));
 
             // Sum the weighted trail values using the species mask
             sum += dot( sense_weight, imageLoad(trail_map, ivec2(sample_x, sample_y)) );
@@ -126,85 +127,16 @@ void dot(float x, float y, vec4 col, int size)
     }
 }
 
-vec2 shape_ratio = vec2(buffer_data.shape_size.x / float(buffer_data.screen_size.x), buffer_data.shape_size.y / float(buffer_data.screen_size.y));
-float PI = 3.1415926536;
-
-AgentData senseShape(AgentData agent, SpeciesData species, float turn_speed, float random_steer_strength)
-{
-    if (buffer_data.shape_size.x != 0)
-    {
-        float sense_distance = 2;
-
-        // Check pixels forward
-        vec2 sensor_dir_fb = vec2(cos(agent.angle), sin(agent.angle));
-        // Calculate the sensor position by offsetting the agent's position
-        vec2 sensor_pos_forward = agent.position + sensor_dir_fb * sense_distance;
-        vec2 sensor_pos_backward = agent.position - sensor_dir_fb * sense_distance;
-        vec4 col_forward = imageLoad(shape_map, ivec2(sensor_pos_forward.x, sensor_pos_forward.y));
-        vec4 col_backward = imageLoad(shape_map, ivec2(sensor_pos_backward.x, sensor_pos_backward.y));
-
-        if (col_forward.w != col_backward.w)
-        {
-            vec2 sensor_dir_lr = vec2(cos(agent.angle + PI / 2), sin(agent.angle));
-            vec2 sensor_pos_left = agent.position - sensor_dir_lr * sense_distance;
-            vec2 sensor_pos_right = agent.position + sensor_dir_lr * sense_distance;
-            vec4 col_left = imageLoad(shape_map, ivec2(sensor_pos_left.x, sensor_pos_left.y));
-            vec4 col_right = imageLoad(shape_map, ivec2(sensor_pos_right.x, sensor_pos_right.y));
-
-            if (col_left.w > col_right.w)
-            {
-                agent.angle -= 1 * buffer_data.delta_time;
-            }
-            else if (col_left.w > col_right.w)
-            {
-                agent.angle += 1 * buffer_data.delta_time;
-            }
-        }
-    }
-
-    return agent;
-}
-
-AgentData senseTrails(AgentData agent, SpeciesData species, float turn_speed, float random_steer_strength)
-{
-    float sensor_angle = species.sensor_angle;
-    float forward_weight = sense(agent, species, 0.0);
-    float left_weight = sense(agent, species, sensor_angle);
-    float right_weight = sense(agent, species, -sensor_angle);
-
-    if (forward_weight > left_weight && forward_weight > right_weight) {
-        // Forward is the strongest pull, just stay on this path
-        agent.angle += 0.0;
-    }
-    else if (left_weight > forward_weight && right_weight > forward_weight)
-    {
-        // Forward is the weakest by far, probably trails to either of our sides. Just wiggle randomly
-        agent.angle += random_steer_strength * buffer_data.delta_time;
-    }
-    else if (left_weight > right_weight) {
-        agent.angle += (random_steer_strength + turn_speed) * buffer_data.delta_time;
-    }
-    else if (right_weight > left_weight) {
-        agent.angle -= (random_steer_strength + turn_speed) * buffer_data.delta_time;
-    }
-    else {
-        // Just wiggle randomly. Or maybe do nothing. To be tested.
-        agent.angle += random_steer_strength * buffer_data.delta_time;
-    }
-
-    return agent;
-}
-
 void main() {
     uint id = gl_GlobalInvocationID.x;
 
-    if (id >= buffer_data.num_agents)
+    if (id >= float_data.num_agents)
     {
         return;
     }
 
     AgentData agent = agents_buffer.agents[id];
-    agent.confusion_timer -= buffer_data.delta_time;
+    agent.confusion_timer -= float_data.delta_time;
 
     //dot(agent.position.x, agent.position.y, vec4(0,1,0,1), 2);
     
@@ -212,10 +144,10 @@ void main() {
     vec4 species_mask = agent.species_mask;
     SpeciesData species = species_buffer.species[0];
 
-    uint random = hash(uint(agent.position.y * buffer_data.screen_size.x + agent.position.x + hash(id + uint(buffer_data.delta_time * 100000.0))));
+    uint random = hash(uint(agent.position.y * screen_size.x + agent.position.x + hash(id + uint(float_data.delta_time * 100000.0))));
 
     // Agents have a chance to become confused and randomly follow some paths
-    if (scale_to_range_01(random) < (species.confusion_chance * buffer_data.delta_time))
+    if (scale_to_range_01(random) < (species.confusion_chance * float_data.delta_time))
     {
         agent.confusion_timer = species.confusion_timeout;
     }
@@ -225,33 +157,54 @@ void main() {
 
     if (agent.confusion_timer <= 0)
     {
-        agent = senseShape(agent, species, turn_speed, random_steer_strength);
-        agent = senseTrails(agent, species, turn_speed, random_steer_strength);
+        float sensor_angle = species.sensor_angle;
+        float forward_weight = sense(agent, species, 0.0);
+        float left_weight = sense(agent, species, sensor_angle);
+        float right_weight = sense(agent, species, -sensor_angle);
+
+        /*
+        float total_weight = forward_weight + left_weight + right_weight + 0.0001;
+        float random_weight = scale_to_range_01(random);
+
+        agent.angle += ( pow(right_weight / total_weight, 2) - pow(left_weight / total_weight, 2) ) * (1 - forward_weight / total_weight) * random_steer_strength;
+        */
+        if (forward_weight > left_weight && forward_weight > right_weight) {
+            agent.angle += 0.0;
+        }
+        else if (left_weight > right_weight) {
+            agent.angle += random_steer_strength * turn_speed * float_data.delta_time;
+        }
+        else if (right_weight > left_weight) {
+            agent.angle -= random_steer_strength * turn_speed * float_data.delta_time;
+        }
+        else { // (forward_weight < left_weight && forward_weight < right_weight)
+            agent.angle += random_steer_strength * turn_speed * float_data.delta_time;
+        }
     }
     else
     {
-        agent.angle += species.turn_speed * (scale_to_range_01(random) - 0.5) * buffer_data.delta_time;
+        agent.angle += species.turn_speed * (scale_to_range_01(random) - 0.5) * float_data.delta_time;
     }
 
     vec2 direction = vec2(cos(agent.angle), sin(agent.angle));
-    vec2 new_pos = agent.position + direction * species.move_speed * buffer_data.delta_time;
+    vec2 new_pos = agent.position + direction * species.move_speed * float_data.delta_time;
 
     // Update the trail map
     ivec2 coord = ivec2(new_pos);
     vec4 old_trail = imageLoad(trail_map, coord);
-    vec4 new_trail = min(vec4(1.0), old_trail + species_mask * buffer_data.trail_weight * buffer_data.delta_time);
+    vec4 new_trail = min(vec4(1.0), old_trail + species_mask * float_data.trail_weight * float_data.delta_time);
     //new_trail = vec4(1, 1, 1, 1);
 
-    if (new_pos.x < 0.0 || new_pos.x >= buffer_data.screen_size.x || new_pos.y < 0.0 || new_pos.y >= buffer_data.screen_size.y) {
-        ivec2 dir_to_center =  ivec2(buffer_data.screen_size.x / 2, buffer_data.screen_size.y / 2) - ivec2(new_pos);
+    if (new_pos.x < 0.0 || new_pos.x >= screen_size.x || new_pos.y < 0.0 || new_pos.y >= screen_size.y) {
+        ivec2 dir_to_center =  ivec2(screen_size.x / 2, screen_size.y / 2) - ivec2(new_pos);
         float angle_to_center = atan(dir_to_center.y, dir_to_center.x);
         //agent.angle = angle_to_center;
 
         // Pick a random angle
         random = hash(random);
-        int x1 = int(scale_to_range_01(random) * buffer_data.screen_size.x);
+        int x1 = int(scale_to_range_01(random) * screen_size.x);
         random = hash(random);
-        int y1 = int(scale_to_range_01(random) * buffer_data.screen_size.y);
+        int y1 = int(scale_to_range_01(random) * screen_size.y);
 
         ivec2 random_direction = ivec2(x1, y1) - ivec2(new_pos.x, new_pos.y);
         float random_angle = atan(random_direction.y, random_direction.x); // scale_to_range_01(random) * 2.0 * 3.1415;
@@ -266,8 +219,8 @@ void main() {
         agent.angle = angle_to_center; //atan(total_vec.y, total_vec.x);
         */
 
-        new_pos.x = min(buffer_data.screen_size.x-1,max(0, new_pos.x));
-		new_pos.y = min(buffer_data.screen_size.y-1,max(0, new_pos.y));
+        new_pos.x = min(screen_size.x-1,max(0, new_pos.x));
+		new_pos.y = min(screen_size.y-1,max(0, new_pos.y));
     }
 
     imageStore(trail_map, coord, new_trail);

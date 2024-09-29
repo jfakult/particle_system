@@ -3,13 +3,12 @@ extends ColorRect
 var show_agents_only = false
 #var GameSettings = preload("res://path_to_your_GameSettings.gd").new()
 
-var IMAGE_PRECISION = Image.FORMAT_RGBAH
-var TEXTURE_BUFFER_PRECISION = RenderingDevice.DATA_FORMAT_R16G16B16A16_SFLOAT
+var IMAGE_PRECISION = Image.FORMAT_RGBAH #Image.FORMAT_RGBA8
+var TEXTURE_BUFFER_PRECISION = RenderingDevice.DATA_FORMAT_R16G16B16A16_SFLOAT # RenderingDevice.DATA_FORMAT_R8G8B8A8_UINT
 var AGENT_DISPATCH_SIZE = 512
 
 var trail_map: ImageTexture
-var diffused_trail_map: ImageTexture
-var display_texture: ImageTexture
+var shape_map: ImageTexture
 
 var rd = RenderingServer.create_local_rendering_device()
 var compute_list
@@ -27,8 +26,12 @@ var species_uniform: RDUniform
 var trail_map_image: Image
 var trail_map_uniform: RDUniform
 var trail_map_texture
+var shape_map_image: Image
+var shape_map_uniform: RDUniform
+var shape_map_texture
 var screen_size_uniform: RDUniform
-var floats_uniform: RDUniform
+var shape_size_uniform: RDUniform
+var other_data_uniform: RDUniform
 
 var agents: Array = []
 
@@ -118,13 +121,13 @@ func init_agents():
 			var data_pos = 0
 			while data_pos < agents_data.size():
 				var species_mask = Vector4(agents_data.decode_float(data_pos), agents_data.decode_float(data_pos + 4), agents_data.decode_float(data_pos + 8), agents_data.decode_float(data_pos + 12))
-				var position = Vector2(agents_data.decode_float(data_pos + 16), agents_data.decode_float(data_pos + 20))
+				var pos = Vector2(agents_data.decode_float(data_pos + 16), agents_data.decode_float(data_pos + 20))
 				var angle = agents_data.decode_float(data_pos + 24)
 				var species_index = agents_data.decode_float(data_pos + 28)
 				var confusion_timer = agents_data.decode_float(data_pos + 32)
 				agents.append({
 					"species_mask": species_mask,
-					"position": position,
+					"position": pos,
 					"angle": angle,
 					"species_index": species_index,
 					"confusion_timer": confusion_timer
@@ -193,12 +196,18 @@ func _ready():
 	trail_map_image.fill(Color(0.0, 0.0, 0.0, 1))
 	trail_map_texture = rd.texture_create(fmt, RDTextureView.new(), [trail_map_image.get_data()])
 
-	#var diffused_trail_image : Image = Image.create(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, IMAGE_PRECISION)
-	#diffused_trail_map = ImageTexture.create_from_image(diffused_trail_image)
+	# load from Shapes/circle_with_ring.png
+	shape_map_image = Image.new()
+	shape_map_image.load("res://Shapes/circle_with_ring.png")
+	shape_map_image.convert(IMAGE_PRECISION)
 
-	#var display_image : Image = Image.create(GameSettings.slime_settings.width, GameSettings.slime_settings.height, false, IMAGE_PRECISION)
-	#display_texture = ImageTexture.create_from_image(display_image)
-
+	var shape_fmt = RDTextureFormat.new()
+	shape_fmt.width = shape_map_image.get_width()
+	shape_fmt.height = shape_map_image.get_height()
+	shape_fmt.format = TEXTURE_BUFFER_PRECISION
+	shape_fmt.usage_bits = RenderingDevice.TEXTURE_USAGE_STORAGE_BIT + RenderingDevice.TEXTURE_USAGE_CAN_UPDATE_BIT + RenderingDevice.TEXTURE_USAGE_CAN_COPY_FROM_BIT
+	shape_map_texture = rd.texture_create(shape_fmt, RDTextureView.new(), [shape_map_image.get_data()])
+	
 	var shader_file = load("res://slime.glsl")
 	var shader_spirv: RDShaderSPIRV = shader_file.get_spirv()
 	agents_shader = rd.shader_create_from_spirv(shader_spirv)
@@ -219,15 +228,19 @@ func _ready():
 	# update into the shader
 	rd.texture_update(trail_map_texture, 0, trail_map_image.get_data())
 
+	shape_map_uniform = build_shader_buffer(shape_map_texture, RenderingDevice.UNIFORM_TYPE_IMAGE, 4)
+	# update into the shader
+	rd.texture_update(shape_map_texture, 0, shape_map_image.get_data())
+
 	# Screen size
 	var screen_size_data = [GameSettings.slime_settings.width, GameSettings.slime_settings.height]
 	var screen_size_buffer = pack_array(screen_size_data)
 	screen_size_uniform = build_shader_buffer(screen_size_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 3)
 
 	# Create a buffer for all float values
-	var float_data = [GameSettings.slime_settings.trail_weight, 0.0, GameSettings.slime_settings.num_agents]
-	var float_buffer = pack_array(float_data)
-	floats_uniform = build_shader_buffer(float_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 4)
+	var other_data = [GameSettings.slime_settings.trail_weight, 0.0, GameSettings.slime_settings.num_agents]
+	var other_data_buffer = pack_array(other_data)
+	other_data_uniform = build_shader_buffer(other_data_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 3)
 
 	# Create a compute pipeline
 	agents_pipeline = rd.compute_pipeline_create(agents_shader)
@@ -245,7 +258,7 @@ func _ready():
 # Main simulation loop
 func _process(delta: float):
 	# if less than 1 second, wait
-	if Time.get_ticks_msec() < 3000:
+	if Time.get_ticks_msec() < 2500:
 		return
 
 	GameSettings.update_settings()
@@ -274,13 +287,13 @@ func rebuild_shader_buffers(delta: float):
 	species_uniform = build_shader_buffer(species_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 1)
 
 	# Update delta time uniform
-	var float_data = [GameSettings.slime_settings.trail_weight, delta, GameSettings.slime_settings.diffuse_rate, GameSettings.slime_settings.decay_rate, GameSettings.slime_settings.num_agents]
-	var float_buffer = pack_array(float_data)
-	floats_uniform = build_shader_buffer(float_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 4)
+	var other_data = [Vector2(GameSettings.slime_settings.width, GameSettings.slime_settings.height), Vector2(shape_map_image.get_width(), shape_map_image.get_height()),
+					  GameSettings.slime_settings.trail_weight, delta, GameSettings.slime_settings.diffuse_rate,
+					  GameSettings.slime_settings.decay_rate, GameSettings.slime_settings.num_agents, 0.0, 0.0, 0.0]
+	var other_data_buffer = pack_array(other_data)
+	other_data_uniform = build_shader_buffer(other_data_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 3)
 
 	agents_uniform = build_shader_buffer(shader_agents_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 0)
-
-	#rd.texture_update(trail_map_texture, 0, trail_map_image.get_data())
 
 	# Create the uniform set
 	agent_uniform_set = rd.uniform_set_create([
@@ -288,14 +301,15 @@ func rebuild_shader_buffers(delta: float):
 		species_uniform,
 		trail_map_uniform,
 		screen_size_uniform,
-		floats_uniform
+		other_data_uniform,
+		shape_map_uniform
 	], agents_shader, 0)
 
 
 	diffuse_uniform_set = rd.uniform_set_create([
 		trail_map_uniform,
 		screen_size_uniform,
-		floats_uniform
+		other_data_uniform
 	], diffuse_shader, 0)
 
 func run_agents_compute():
@@ -303,7 +317,9 @@ func run_agents_compute():
 
 	rd.compute_list_bind_uniform_set(compute_list, agent_uniform_set, 0)
 	rd.compute_list_bind_compute_pipeline(compute_list, agents_pipeline)
-	rd.compute_list_dispatch(compute_list, ceil(GameSettings.slime_settings.num_agents / AGENT_DISPATCH_SIZE) + 1, 1, 1)
+
+	#@warning_ignore("integer_division")
+	rd.compute_list_dispatch(compute_list, ceil(GameSettings.slime_settings.num_agents / float(AGENT_DISPATCH_SIZE)), 1, 1)
 
 	rd.compute_list_end()
 

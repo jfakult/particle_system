@@ -24,9 +24,9 @@ var colour: Vector4
 '''
 move_speed : turn_speed ~= 100 : 1.5
 '''
-func _init(_move_speed: float = 100.0, _turn_speed: float = 5.0, _random_steer_strength: float = 5.0,
-           _sensor_angle_spacing: float = PI / 6, _sensor_offset_dst: float = 6.0, _sensor_size: int = 2,
-           _confusion_chance: float = 0.100, _confusion_timeout: float = 0.4, _colour: Vector4 = Vector4(0.6, 0.5, 1, 1)):
+func _init(_move_speed: float = 100.0, _turn_speed: float = 2.0, _random_steer_strength: float = 5.0,
+           _sensor_angle_spacing: float = PI / 6, _sensor_offset_dst: float = 5.0, _sensor_size: int = 2,
+           _confusion_chance: float = 0.1, _confusion_timeout: float = 0.1, _colour: Vector4 = Vector4(0.6, 0.5, 1, 1)):
     move_speed = _move_speed
     turn_speed = _turn_speed
     random_steer_strength = _random_steer_strength
