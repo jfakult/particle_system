@@ -5,67 +5,50 @@
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-/*
-struct AgentData {
-    vec4 species_mask; // byte 0-15
-    vec2 position;     // byte 16-23 (valid as aligned to 16 bytes)
-    float angle;       // byte 24-27 (valid as aligned to 4 bytes) 
-    int species_index; // byte 28-31 (valid as aligned to 4 bytes)
-};
-layout(set = 0, binding = 0, std430) restrict buffer AgentsBuffer {
-    AgentData agents[];
-} agents_buffer;
-
-struct SpeciesData {
-    float move_speed;
-    float turn_speed;
-    float sensor_angle;
-    float sensor_offset;
-    int sensor_size;
-    vec4 color;
-};
-layout(set = 0, binding = 1, std430) restrict buffer SpeciesBuffer {
-    SpeciesData species[];
-} species_buffer;
-*/
-
 layout(set=0, binding=2, rgba16f) uniform image2D trail_map;
 
-layout(set=0, binding=3) restrict buffer ScreenSizeBuffer {
-    int x;
-    int y;
-} screen_size;
-
-layout(set=0, binding=4) restrict buffer FloatDataBuffer {
+layout(set=0, binding=3) restrict buffer OtherDataBuffer {
+    ivec2 screen_size;
+    ivec2 shape_size;
     float trail_weight;
     float delta_time;
     float diffuse_rate;
     float decay_rate;
+    
+    // Next chunk of 16
     int num_agents;
-} float_data;
+    float padding1;
+    float padding2;
+    float padding3;
+} buffer_data;
+
+
+int blur_size = 1;
 
 void main() {
     ivec2 pos = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
-    if (pos.x > screen_size.x || pos.x < 0 || pos.y > screen_size.y || pos.y < 0)
+    if (pos.x >= (buffer_data.screen_size.x - blur_size) || 
+        (pos.x < blur_size) ||
+        (pos.y >= (buffer_data.screen_size.y - blur_size)) ||
+        (pos.y < blur_size))
     {
+        //imageStore(trail_map, pos, vec4(1,1,1,1));
         return;
     }
 
     vec4 sum = vec4(0);
 	vec4 originalCol = imageLoad(trail_map, pos);
-	// 3x3 blur
-	for (int offsetX = -1; offsetX <= 1; offsetX ++) {
-		for (int offsetY = -1; offsetY <= 1; offsetY ++) {
-			int sampleX = min(screen_size.x-1, max(0, pos.x + offsetX));
-			int sampleY = min(screen_size.y-1, max(0, pos.y + offsetY));
-			sum += imageLoad(trail_map, ivec2(sampleX, sampleY));
+	for (int offsetX = -blur_size; offsetX <= blur_size; offsetX ++) {
+		for (int offsetY = -blur_size; offsetY <= blur_size; offsetY ++) {
+			sum += imageLoad(trail_map, ivec2(pos.x + offsetX, pos.y + offsetY));
 		}
 	}
 
-	vec4 blurredCol = sum / 9;
-	float diffuseWeight = clamp(float_data.diffuse_rate * float_data.delta_time, 0.0, 1.0);
+    // Divide the total by number of blurs, but make sure opacity it maxed in case of reads off the edge of the image
+	vec4 blurredCol = sum / pow(blur_size * 2 + 1, 2); // + vec4(0, 0, 0, 1);
+	float diffuseWeight = clamp(buffer_data.diffuse_rate * buffer_data.delta_time, 0.0, 1.0);
 	blurredCol = originalCol * (1 - diffuseWeight) + blurredCol * (diffuseWeight);
 
-	//DiffusedTrailMap[id.xy] = blurredCol * clamp(1 - float_data.decay_rate * float_data.delta_time, 0.0, 1.0);
-	imageStore(trail_map, pos, blurredCol * vec4(float_data.decay_rate, float_data.decay_rate, float_data.decay_rate, 1)); //max(0, blurredCol * float_data.decay_rate * float_data.delta_time));
+	//DiffusedTrailMap[id.xy] = blurredCol * clamp(1 - buffer_data.decay_rate * buffer_data.delta_time, 0.0, 1.0);
+	imageStore(trail_map, pos, blurredCol * vec4(buffer_data.decay_rate, buffer_data.decay_rate, buffer_data.decay_rate, 1));
 }

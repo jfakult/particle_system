@@ -160,8 +160,6 @@ func init_agents_wrapper():
 	# Initialize agents
 	var center = Vector2(GameSettings.slime_settings.width / 2.0, GameSettings.slime_settings.height / 2.0)
 
-	print("Settings: ", GameSettings.slime_settings.num_agents, " vs ", len(agents))
-
 	if GameSettings.slime_settings.num_agents < len(agents):
 		agents.resize(GameSettings.slime_settings.num_agents)
 	else: # GameSettings.slime_settings.num_agents > len(agents):
@@ -238,9 +236,9 @@ func _ready():
 	screen_size_uniform = build_shader_buffer(screen_size_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 3)
 
 	# Create a buffer for all float values
-	var other_data = [GameSettings.slime_settings.trail_weight, 0.0, GameSettings.slime_settings.num_agents]
-	var other_data_buffer = pack_array(other_data)
-	other_data_uniform = build_shader_buffer(other_data_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 3)
+	#var other_data = [GameSettings.slime_settings.trail_weight, 0.0, GameSettings.slime_settings.num_agents]
+	#var other_data_buffer = pack_array(other_data)
+	#other_data_uniform = build_shader_buffer(other_data_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 3)
 
 	# Create a compute pipeline
 	agents_pipeline = rd.compute_pipeline_create(agents_shader)
@@ -287,7 +285,7 @@ func rebuild_shader_buffers(delta: float):
 	species_uniform = build_shader_buffer(species_buffer, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, 1)
 
 	# Update delta time uniform
-	var other_data = [Vector2(GameSettings.slime_settings.width, GameSettings.slime_settings.height), Vector2(shape_map_image.get_width(), shape_map_image.get_height()),
+	var other_data = [GameSettings.slime_settings.width, GameSettings.slime_settings.height, shape_map_image.get_width(), shape_map_image.get_height(),
 					  GameSettings.slime_settings.trail_weight, delta, GameSettings.slime_settings.diffuse_rate,
 					  GameSettings.slime_settings.decay_rate, GameSettings.slime_settings.num_agents, 0.0, 0.0, 0.0]
 	var other_data_buffer = pack_array(other_data)
@@ -308,7 +306,6 @@ func rebuild_shader_buffers(delta: float):
 
 	diffuse_uniform_set = rd.uniform_set_create([
 		trail_map_uniform,
-		screen_size_uniform,
 		other_data_uniform
 	], diffuse_shader, 0)
 

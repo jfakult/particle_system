@@ -115,7 +115,7 @@ float sense(AgentData agent, SpeciesData species, float sensor_angle_offset) {
     return sum;
 }
 
-void dot(float x, float y, vec4 col, int size)
+void show_dot(float x, float y, vec4 col, int size)
 {
     for (float x1 = x - size; x1 < x + size; x1++)
     {
@@ -126,32 +126,34 @@ void dot(float x, float y, vec4 col, int size)
     }
 }
 
-vec2 shape_ratio = vec2(buffer_data.shape_size.x / float(buffer_data.screen_size.x), buffer_data.shape_size.y / float(buffer_data.screen_size.y));
 float PI = 3.1415926536;
 
 AgentData senseShape(AgentData agent, SpeciesData species, float turn_speed, float random_steer_strength)
 {
     if (buffer_data.shape_size.x != 0)
     {
+        vec2 shape_ratio = vec2(buffer_data.shape_size.x / float(buffer_data.screen_size.x), buffer_data.shape_size.y / float(buffer_data.screen_size.y));
+        agent.angle += shape_ratio.x * shape_ratio.y;
         float sense_distance = 2;
+        vec2 scaled_pos = agent.position * shape_ratio;
 
         // Check pixels forward
         vec2 sensor_dir_fb = vec2(cos(agent.angle), sin(agent.angle));
         // Calculate the sensor position by offsetting the agent's position
-        vec2 sensor_pos_forward = agent.position + sensor_dir_fb * sense_distance;
-        vec2 sensor_pos_backward = agent.position - sensor_dir_fb * sense_distance;
+        vec2 sensor_pos_forward = scaled_pos + sensor_dir_fb * sense_distance;
+        vec2 sensor_pos_backward = scaled_pos - sensor_dir_fb * sense_distance;
         vec4 col_forward = imageLoad(shape_map, ivec2(sensor_pos_forward.x, sensor_pos_forward.y));
         vec4 col_backward = imageLoad(shape_map, ivec2(sensor_pos_backward.x, sensor_pos_backward.y));
 
         if (col_forward.w != col_backward.w)
         {
             vec2 sensor_dir_lr = vec2(cos(agent.angle + PI / 2), sin(agent.angle));
-            vec2 sensor_pos_left = agent.position - sensor_dir_lr * sense_distance;
-            vec2 sensor_pos_right = agent.position + sensor_dir_lr * sense_distance;
+            vec2 sensor_pos_left = scaled_pos - sensor_dir_lr * sense_distance;
+            vec2 sensor_pos_right = scaled_pos + sensor_dir_lr * sense_distance;
             vec4 col_left = imageLoad(shape_map, ivec2(sensor_pos_left.x, sensor_pos_left.y));
             vec4 col_right = imageLoad(shape_map, ivec2(sensor_pos_right.x, sensor_pos_right.y));
 
-            if (col_left.w > col_right.w)
+            if (true || col_left.w > col_right.w)
             {
                 agent.angle -= 1 * buffer_data.delta_time;
             }
@@ -208,9 +210,8 @@ void main() {
 
     //dot(agent.position.x, agent.position.y, vec4(0,1,0,1), 2);
     
-    int species_index = agent.species_index;
     vec4 species_mask = agent.species_mask;
-    SpeciesData species = species_buffer.species[0];
+    SpeciesData species = species_buffer.species[agent.species_index];
 
     uint random = hash(uint(agent.position.y * buffer_data.screen_size.x + agent.position.x + hash(id + uint(buffer_data.delta_time * 100000.0))));
 
@@ -220,13 +221,13 @@ void main() {
         agent.confusion_timer = species.confusion_timeout;
     }
 
-    float random_steer_strength = (scale_to_range_01(random) - 0.5) * 2 * species.random_steer_strength;
+    float random_steer_strength = (scale_to_range_01(random) - 0.5) * 2 * species.random_steer_strength * 0.0;
     float turn_speed = species.turn_speed * 2.0 * 3.1415;
 
     if (agent.confusion_timer <= 0)
     {
+        //agent = senseTrails(agent, species, turn_speed, random_steer_strength);
         agent = senseShape(agent, species, turn_speed, random_steer_strength);
-        agent = senseTrails(agent, species, turn_speed, random_steer_strength);
     }
     else
     {
