@@ -1,5 +1,7 @@
 // shader_type compute;
 
+// Todo: Food and age
+
 #[compute]
 #version 460
 
@@ -133,34 +135,35 @@ AgentData senseShape(AgentData agent, SpeciesData species, float turn_speed, flo
     if (buffer_data.shape_size.x != 0)
     {
         vec2 shape_ratio = vec2(buffer_data.shape_size.x / float(buffer_data.screen_size.x), buffer_data.shape_size.y / float(buffer_data.screen_size.y));
-        agent.angle += shape_ratio.x * shape_ratio.y;
-        float sense_distance = 2;
-        vec2 scaled_pos = agent.position * shape_ratio;
+        float sense_distance = 4;
+        vec2 scaled_pos = ivec2(agent.position * shape_ratio);
 
         // Check pixels forward
         vec2 sensor_dir_fb = vec2(cos(agent.angle), sin(agent.angle));
         // Calculate the sensor position by offsetting the agent's position
-        vec2 sensor_pos_forward = scaled_pos + sensor_dir_fb * sense_distance;
-        vec2 sensor_pos_backward = scaled_pos - sensor_dir_fb * sense_distance;
-        vec4 col_forward = imageLoad(shape_map, ivec2(sensor_pos_forward.x, sensor_pos_forward.y));
-        vec4 col_backward = imageLoad(shape_map, ivec2(sensor_pos_backward.x, sensor_pos_backward.y));
+        ivec2 sensor_pos_forward = ivec2(scaled_pos + sensor_dir_fb * sense_distance);
+        ivec2 sensor_pos_backward = ivec2(scaled_pos - sensor_dir_fb * sense_distance);
+        vec4 col_forward = imageLoad(shape_map, sensor_pos_forward);
+        //vec4 col_backward = imageLoad(shape_map, sensor_pos_backward);
+        //imageStore(trail_map, sensor_pos_forward, col_forward + vec4(0,0,0,1));
 
-        if (col_forward.w != col_backward.w)
+        vec2 sensor_dir_lr = vec2(cos(agent.angle + PI / 2), sin(agent.angle));
+        vec2 sensor_pos_left = scaled_pos - sensor_dir_lr * sense_distance;
+        vec2 sensor_pos_right = scaled_pos + sensor_dir_lr * sense_distance;
+        vec4 col_left = imageLoad(shape_map, ivec2(sensor_pos_left.x, sensor_pos_left.y));
+        vec4 col_right = imageLoad(shape_map, ivec2(sensor_pos_right.x, sensor_pos_right.y));
+
+        if (col_forward.x > col_left.x && col_forward.x > col_right.x)
         {
-            vec2 sensor_dir_lr = vec2(cos(agent.angle + PI / 2), sin(agent.angle));
-            vec2 sensor_pos_left = scaled_pos - sensor_dir_lr * sense_distance;
-            vec2 sensor_pos_right = scaled_pos + sensor_dir_lr * sense_distance;
-            vec4 col_left = imageLoad(shape_map, ivec2(sensor_pos_left.x, sensor_pos_left.y));
-            vec4 col_right = imageLoad(shape_map, ivec2(sensor_pos_right.x, sensor_pos_right.y));
-
-            if (true || col_left.w > col_right.w)
-            {
-                agent.angle -= 1 * buffer_data.delta_time;
-            }
-            else if (col_left.w > col_right.w)
-            {
-                agent.angle += 1 * buffer_data.delta_time;
-            }
+            agent.angle += 0;
+        }
+        else if (col_left.x > col_right.x)
+        {
+            agent.angle -= 1 * buffer_data.delta_time;
+        }
+        else if (col_left.x > col_right.x)
+        {
+            agent.angle += 1 * buffer_data.delta_time;
         }
     }
 
@@ -176,18 +179,17 @@ AgentData senseTrails(AgentData agent, SpeciesData species, float turn_speed, fl
 
     if (forward_weight > left_weight && forward_weight > right_weight) {
         // Forward is the strongest pull, just stay on this path
-        agent.angle += 0.0;
+        agent.angle += 0.0; // True || Add + forward_weight here... makes a universe
     }
-    else if (left_weight > forward_weight && right_weight > forward_weight)
-    {
+    else if (left_weight > forward_weight && right_weight > forward_weight) {
         // Forward is the weakest by far, probably trails to either of our sides. Just wiggle randomly
         agent.angle += random_steer_strength * buffer_data.delta_time;
     }
     else if (left_weight > right_weight) {
-        agent.angle += (random_steer_strength + turn_speed) * buffer_data.delta_time;
+        agent.angle -= (random_steer_strength + turn_speed) * buffer_data.delta_time;
     }
     else if (right_weight > left_weight) {
-        agent.angle -= (random_steer_strength + turn_speed) * buffer_data.delta_time;
+        agent.angle += (random_steer_strength + turn_speed) * buffer_data.delta_time;
     }
     else {
         // Just wiggle randomly. Or maybe do nothing. To be tested.
@@ -208,7 +210,7 @@ void main() {
     AgentData agent = agents_buffer.agents[id];
     agent.confusion_timer -= buffer_data.delta_time;
 
-    //dot(agent.position.x, agent.position.y, vec4(0,1,0,1), 2);
+    //show_dot(agent.position.x, agent.position.y, vec4(0,1,0,1), 2);
     
     vec4 species_mask = agent.species_mask;
     SpeciesData species = species_buffer.species[agent.species_index];
@@ -221,13 +223,13 @@ void main() {
         agent.confusion_timer = species.confusion_timeout;
     }
 
-    float random_steer_strength = (scale_to_range_01(random) - 0.5) * 2 * species.random_steer_strength * 0.0;
+    float random_steer_strength = (scale_to_range_01(random) - 0.5) * 2 * species.random_steer_strength;
     float turn_speed = species.turn_speed * 2.0 * 3.1415;
 
     if (agent.confusion_timer <= 0)
     {
-        //agent = senseTrails(agent, species, turn_speed, random_steer_strength);
-        agent = senseShape(agent, species, turn_speed, random_steer_strength);
+        agent = senseTrails(agent, species, turn_speed, random_steer_strength);
+        //agent = senseShape(agent, species, turn_speed, random_steer_strength);
     }
     else
     {

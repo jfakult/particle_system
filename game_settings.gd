@@ -19,5 +19,6 @@ var colour: Vector4 = slime_settings.species_settings[0].colour
 
 func update_settings():
 	var species_settings = SpeciesSettings.new(move_speed, turn_speed, random_steer_strength, sensor_angle_spacing, sensor_offset_dst, sensor_size, confusion_chance, confusion_timeout, colour)
-	var species_settings_list : Array[SpeciesSettings] = [species_settings]
+	var species_settings2 = SpeciesSettings.new(move_speed, turn_speed, random_steer_strength, sensor_angle_spacing, sensor_offset_dst, sensor_size, confusion_chance, confusion_timeout, Vector4(0.8, 0.5, 0.2, 1))
+	var species_settings_list : Array[SpeciesSettings] = [species_settings] #, species_settings2]
 	slime_settings = SlimeSettings.new(slime_settings.steps_per_frame, slime_settings.width, slime_settings.height, num_agents, slime_settings.spawn_mode, trail_weight, decay_rate, diffuse_rate, species_settings_list)

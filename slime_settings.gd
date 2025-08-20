@@ -23,7 +23,7 @@ var confusion_timeout: float
 # Species settings as an array of SpeciesSettings resources
 var species_settings: Array[SpeciesSettings]
 
-func _init(_steps_per_frame: int = 1, _width: int = 1280, _height: int = 800, _num_agents: int = 10000,
+func _init(_steps_per_frame: int = 1, _width: int = 1280, _height: int = 800, _num_agents: int = 10,
            _spawn_mode: int = SpawnMode.INWARD_CIRCLE, _trail_weight: float = 10.6, _decay_rate: float = 0.99,
            _diffuse_rate: float = 20.0, _species_settings: Array[SpeciesSettings] = [SpeciesSettings.new()]):
     steps_per_frame = _steps_per_frame

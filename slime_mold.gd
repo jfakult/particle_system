@@ -212,6 +212,9 @@ func _ready():
 	var shader_file2 = load("res://diffuse_map.glsl")
 	var shader_spirv2: RDShaderSPIRV = shader_file2.get_spirv()
 	diffuse_shader = rd.shader_create_from_spirv(shader_spirv2)
+
+	# Init base game settings
+	GameSettings.update_settings()
 	
 	init_agents()
 
